@@ -21,8 +21,24 @@ func copyUpdate(_ app: URL, to destination: URL) throws {
 }
 func verify(_ app: URL) throws {
     guard let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist")), info["CFBundleIdentifier"] as? String == "com.clasp.studio", Int(info["CFBundleVersion"] as? String ?? "0") == build else { throw NSError(domain: "ClaspUpdate", code: 1, userInfo: [NSLocalizedDescriptionKey: "The update app identity does not match."]) }
-    let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/codesign"); p.arguments = ["--verify", "--deep", "--strict", app.path]; p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice; try p.run(); p.waitUntilExit()
-    if p.terminationStatus != 0 { throw NSError(domain: "ClaspUpdate", code: 2, userInfo: [NSLocalizedDescriptionKey: "The copied app signature is invalid."]) }
+    // Finder can immediately reattach icon metadata to copied apps in Documents.
+    // Clear unsigned icon metadata; never change or re-sign app contents.
+    var diagnostic = ""
+    for _ in 0..<3 {
+        // Allow Finder's icon update after a move to finish before clearing it.
+        Thread.sleep(forTimeInterval: 0.15)
+        let entries = [app] + (fm.enumerator(at: app, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? [])
+        for entry in entries {
+            for attribute in ["com.apple.FinderInfo", "com.apple.ResourceFork"] {
+                _ = entry.path.withCString { path in attribute.withCString { name in removexattr(path, name, XATTR_NOFOLLOW) } }
+            }
+        }
+        let errors = Pipe()
+        let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/codesign"); p.arguments = ["--verify", "--deep", "--strict", app.path]; p.standardOutput = FileHandle.nullDevice; p.standardError = errors; try p.run(); p.waitUntilExit()
+        diagnostic = String(data: errors.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        if p.terminationStatus == 0 { return }
+    }
+    throw NSError(domain: "ClaspUpdate", code: 2, userInfo: [NSLocalizedDescriptionKey: "The copied app signature is invalid. \(diagnostic.trimmingCharacters(in: .whitespacesAndNewlines).prefix(350))"])
 }
 do {
     guard parent > 1, target.pathExtension == "app", source.pathExtension == "app", target.standardizedFileURL != source.standardizedFileURL else { throw NSError(domain: "ClaspUpdate", code: 3) }
@@ -34,7 +50,13 @@ do {
     }
     try fm.moveItem(at: target, to: backup); movedOld = true
     try fm.moveItem(at: stage, to: target); try verify(target)
-    try? fm.removeItem(at: backup); try? fm.removeItem(at: source.deletingLastPathComponent().deletingLastPathComponent())
+    try? fm.removeItem(at: backup)
+    // Only clean our own extracted download folder, never an arbitrary source.
+    let download = source.deletingLastPathComponent().deletingLastPathComponent()
+    let updates = fm.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("com.clasp.studio/updates", isDirectory: true)
+    if source.deletingLastPathComponent().lastPathComponent == "extracted", download.deletingLastPathComponent().standardizedFileURL == updates.standardizedFileURL {
+        try? fm.removeItem(at: download)
+    }
     record(true, "Installed build \(build)")
     if restart {
         NSWorkspace.shared.openApplication(at: target, configuration: NSWorkspace.OpenConfiguration()) { _, _ in exit(0) }

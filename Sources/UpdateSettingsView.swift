@@ -12,7 +12,12 @@ struct UpdateSettingsView: View {
             Text("Downloaded updates install when you quit. Recording and saving always finish first.").font(.system(size: 10)).foregroundStyle(.secondary)
             HStack {
                 Button(updater.working ? "Checking…" : "Check for updates") { Task { await updater.check() } }.disabled(updater.working || updater.ready)
-                if updater.ready { Button("Install and restart") { guard !model.busy else { return }; updater.restartRequested = true; NSApp.terminate(nil) }.disabled(model.busy).keyboardShortcut(.defaultAction) }
+                if updater.ready { Button("Install and restart") {
+                    guard !model.busy else { return }
+                    updater.restartRequested = true; model.settingsOpen = false
+                    // Finish dismissing the modal sheet before requesting app termination.
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { NSApp.terminate(nil) }
+                }.disabled(model.busy).keyboardShortcut(.defaultAction) }
                 Spacer()
                 Button("GitHub access…") { connect.toggle() }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
             }.controlSize(.small)
