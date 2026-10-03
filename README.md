@@ -24,7 +24,7 @@ Clasp Studio combines a live camera, your selected microphone, a script-followin
 | --- | --- |
 | Live capture | Select a built-in, external, or available Continuity Camera, with an independent microphone. |
 | Teleprompter | Import or paste a script, use on-device English voice following, or choose timed reading pace. |
-| Overlay library | Switch between six supplied designs, duplicate them, and preserve each design’s edits. |
+| Overlay library | Switch between six supplied designs, import your own SVG artwork, and preserve each design’s edits. |
 | Component editor | Select regions on the canvas; edit each component within the design’s protected layout rules. |
 | Branding | Change titles, episode dates, presenter text, headline cards, colors, program logos, and brand logos. |
 | Sponsor carousel | Edit up to twelve names and logos, reorder or hide sponsors, and set continuous scroll speed. |
@@ -37,6 +37,16 @@ Clasp Studio combines a live camera, your selected microphone, a script-followin
 | Animation library | Import reusable MOV/MP4 stingers with audio, or choose a native news wipe and fade through black. |
 | Saved-file popup | Choose **Show in Finder** to open the recording folder and select the finished file. |
 | GitHub updates | Receive verified releases generated automatically by pushes to `main`. |
+
+## Import your own SVG
+
+Choose **Overlays → Import SVG**, or **Import SVG overlay…** in the video editor. The file becomes a reusable design immediately, preserving its shapes, outlined lettering, logos and transparent gradients. Its large embedded photos are replaced by the camera by default; smaller logos stay in the artwork.
+
+The imported design inspector controls artwork opacity, photo replacement, removal of solid canvas fills, and the camera opening’s position, size and corner radius. **Cut opening out of artwork** creates a camera window in an opaque design. Use **Replace SVG…** to bring in a revised file while keeping the library entry. SVG lettering converted to paths stays in the artwork and must be changed in your SVG authoring app. Imported SVGs are rendered once and cached; the camera preview and export use native Core Image layers. External links and scripts are not loaded.
+
+![An original SVG imported into Clasp Studio](docs/media/svg-import.png)
+
+![Camera controls for imported SVG artwork](docs/media/svg-editor.png)
 
 ## Six designs, one library
 

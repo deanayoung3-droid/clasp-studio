@@ -78,6 +78,7 @@ enum BroadcastGraphics {
     static func renderSettings(_ project: StudioProject, activeIndex: Int, at date: Date = Date(), epoch: Double = 0, previousSection: Int? = nil, tickerEpoch: Double? = nil) -> RenderSettings {
         guard project.graphics else { return RenderSettings(overlay: nil, mirror: project.mirror) }
         let doc = document(project), template = doc.template
+        if template == .custom { return ImportedSVGGraphics.settings(doc, mirror: project.mirror) }
         let rect = template.cameraRect
         let mask = image { ctx in rounded(ctx, rect, (template == .law || template == .glass) ? 0 : 14.4, .white) }
         let sponsors = doc.showSponsors ? SponsorCarousel(items: SponsorCatalog.migrated(project), monochrome: template == .glass) : nil
@@ -225,10 +226,8 @@ enum BroadcastGraphics {
         image { ctx in
             let colors = [NSColor(white: 0.19, alpha: 1).cgColor, NSColor(white: 0.37, alpha: 1).cgColor, NSColor(white: 0.21, alpha: 1).cgColor] as CFArray
             if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 0.6, 1]) { ctx.drawLinearGradient(gradient, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 1280, y: 720), options: []) }
-            fill(ctx, CGRect(x: 0, y: 0, width: 1280, height: 190), NSColor(white: 0.14, alpha: 1))
-            fill(ctx, CGRect(x: 945, y: 190, width: 1, height: 530), NSColor.white.withAlphaComponent(0.12))
-            fill(ctx, CGRect(x: 986, y: 190, width: 180, height: 530), NSColor.white.withAlphaComponent(0.035))
-            fill(ctx, CGRect(x: 0, y: 189, width: 1280, height: 1), NSColor.white.withAlphaComponent(0.08))
+            fill(ctx, CGRect(x: 945, y: 0, width: 1, height: 720), NSColor.white.withAlphaComponent(0.12))
+            fill(ctx, CGRect(x: 986, y: 0, width: 180, height: 720), NSColor.white.withAlphaComponent(0.035))
         }
     }
 }

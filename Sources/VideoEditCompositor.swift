@@ -15,7 +15,7 @@ struct EditShotRenderer: @unchecked Sendable {
             if let index = project.overlayLibrary?.firstIndex(where: { $0.id == docID }) { project.overlayLibrary?[index].showHeadlines = false }
         }
         var settings = BroadcastGraphics.renderSettings(project, activeIndex: clip.section, at: BroadcastGraphics.document(project).date, epoch: 0, previousSection: previousSection, tickerEpoch: tickerEpoch)
-        if clip.graphics && !clip.topics && ![OverlayTemplate.glass, .ticker].contains(BroadcastGraphics.document(project).template) {
+        if clip.graphics && !clip.topics && ![OverlayTemplate.glass, .ticker, .custom].contains(BroadcastGraphics.document(project).template) {
             let old = settings.cameraRect
             let wide = CGRect(x: 14, y: old.minY, width: 1252, height: 720 - old.minY - 12)
             let doc = BroadcastGraphics.document(project)

@@ -92,3 +92,12 @@ Drafts autosave under `~/Library/Application Support/ClaspStudio/Drafts`. The an
 The Video inspector provides frame stepping, duplicate, playback speed from 0.25× to 4×, zoom and horizontal/vertical crop positioning. Picture controls include adjustable splits, swapped sides and picture-in-picture. Animation transitions have a source start, start time within the shot, duration, opacity and volume. Drag their timeline bar to move them within that shot. Use **Preview transition** to play from the effect. **Clasp reveal** supplies a cached three-panel broadcast transition.
 
 Law · Glass now blurs only the camera pixels behind its frosted panels. Blur and tint can be adjusted in the Headlines inspector. Law · Ticker uses the original supplied vector branding and an upward scrolling headline beside the brand, following script sections. Its camera remains full frame.
+
+
+## Import an SVG overlay
+
+Open **Overlays** and choose **Import SVG**. You can also import from the video editor’s Overlay inspector or the File menu. The selected file is rendered into a reusable library design, preserving vector artwork, embedded logos and alpha gradients. Large photo placeholders and solid canvas fills are removed by default so the live camera can show through.
+
+The imported-design inspector lets you change artwork opacity, toggle photo replacement or solid-fill removal, and position or resize the camera opening. Enable **Cut opening out of artwork** to clear a new camera area in an opaque overlay; adjust the corner radius there. Choose **Reset camera opening** to restore the detected position. **Replace SVG…** updates that same design with a revised file. Lettering converted to paths remains SVG artwork, so change that lettering in your SVG authoring app before replacing the file.
+
+SVGs must be under 12 MB. Embedded PNG, JPEG, GIF and WebP logos work; external image links and scripts do not load. SVG artwork fits the 16:9 broadcast frame. Your original file stays unchanged. The imported artwork and its camera settings are saved with the project and any video draft using it.

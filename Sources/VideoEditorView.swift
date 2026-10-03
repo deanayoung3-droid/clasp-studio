@@ -221,6 +221,7 @@ struct VideoEditorView: View {
                 Text("Design").foregroundStyle(.secondary)
                 Picker("Design", selection: Binding(get: { selected.overlayID ?? model.document.broadcast.selectedOverlayID ?? BroadcastGraphics.document(model.document.broadcast).id }, set: { id in model.changeClip { $0.overlayID = id } })) { ForEach(model.document.broadcast.overlayLibrary ?? []) { Text($0.name).tag($0.id) } }.labelsHidden()
                 Button { studio.editOverlays() } label: { Label("Edit overlay…", systemImage: "slider.horizontal.3") }.controlSize(.small)
+                Button("Import SVG overlay…") { studio.importSVGOverlay() }.disabled(studio.importingSVG).controlSize(.small)
                 Divider()
                 Toggle("Show topics sidebar", isOn: clip(\.topics, fallback: true)).toggleStyle(.switch).controlSize(.mini)
                 if selected.topics { Text("Active headline").foregroundStyle(.secondary); Picker("Headline", selection: clip(\.section, fallback: 0)) { ForEach(Array(model.document.broadcast.sections.enumerated()), id: \.element.id) { index, section in Text(section.title).tag(index) } }.labelsHidden() }

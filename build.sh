@@ -9,9 +9,9 @@ APP_STAGE=$(mktemp -d /private/tmp/clasp-studio-build.XXXXXX)
 trap 'rm -rf "$APP_STAGE"' EXIT
 APP="$APP_STAGE/Clasp Studio.app"
 mkdir -p "$BUILD" "$APP/Contents/MacOS" "$APP/Contents/Resources"
-xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx14.0 -module-cache-path "$BUILD/module-cache" "$ROOT"/Sources/*.swift "$ROOT"/Tests/*.swift -o "$BUILD/ClaspStudio-arm64" -framework SwiftUI -framework AppKit -framework AVKit -framework AVFoundation -framework CoreImage -framework PDFKit -framework Speech -framework MetalKit -framework Metal -framework Security -framework CryptoKit
+xcrun swiftc -swift-version 5 -O -target arm64-apple-macosx14.0 -module-cache-path "$BUILD/module-cache" "$ROOT"/Sources/*.swift "$ROOT"/Tests/*.swift -o "$BUILD/ClaspStudio-arm64" -framework SwiftUI -framework AppKit -framework AVKit -framework AVFoundation -framework CoreImage -framework PDFKit -framework Speech -framework MetalKit -framework Metal -framework Security -framework CryptoKit -framework WebKit
 if [[ "${1:-}" == "--universal" ]]; then
-  xcrun swiftc -swift-version 5 -O -target x86_64-apple-macosx14.0 -module-cache-path "$BUILD/module-cache-x86" "$ROOT"/Sources/*.swift "$ROOT"/Tests/*.swift -o "$BUILD/ClaspStudio-x86_64" -framework SwiftUI -framework AppKit -framework AVKit -framework AVFoundation -framework CoreImage -framework PDFKit -framework Speech -framework MetalKit -framework Metal -framework Security -framework CryptoKit
+  xcrun swiftc -swift-version 5 -O -target x86_64-apple-macosx14.0 -module-cache-path "$BUILD/module-cache-x86" "$ROOT"/Sources/*.swift "$ROOT"/Tests/*.swift -o "$BUILD/ClaspStudio-x86_64" -framework SwiftUI -framework AppKit -framework AVKit -framework AVFoundation -framework CoreImage -framework PDFKit -framework Speech -framework MetalKit -framework Metal -framework Security -framework CryptoKit -framework WebKit
   xcrun lipo -create "$BUILD/ClaspStudio-arm64" "$BUILD/ClaspStudio-x86_64" -output "$APP/Contents/MacOS/ClaspStudio"
 else
   cp "$BUILD/ClaspStudio-arm64" "$APP/Contents/MacOS/ClaspStudio"

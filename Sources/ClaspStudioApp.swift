@@ -33,6 +33,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if CommandLine.arguments.contains("--self-test") { StudioTests.run(); exit(0) }
         if let index = CommandLine.arguments.firstIndex(of: "--render-preview"), CommandLine.arguments.indices.contains(index + 1) {
             let previewModel = StudioModel(persist: false)
+            if let svgIndex = CommandLine.arguments.firstIndex(of: "--svg-preview"), CommandLine.arguments.indices.contains(svgIndex + 1) {
+                var finished = false, svgError: Error?
+                Task { @MainActor in
+                    do {
+                        let url = URL(fileURLWithPath: CommandLine.arguments[svgIndex + 1])
+                        let asset = try await SVGOverlayImport.render(Data(contentsOf: url))
+                        var document = previewModel.overlay; document.id = UUID(); document.name = url.deletingPathExtension().lastPathComponent; document.template = .custom; document.importedSVG = asset
+                        previewModel.project.overlayLibrary?.append(document); previewModel.project.selectedOverlayID = document.id
+                    } catch { svgError = error }
+                    finished = true
+                }
+                let deadline = Date().addingTimeInterval(20)
+                while !finished && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+                if !finished || svgError != nil { fputs("SVG preview failed: \(String(describing: svgError))", stderr); exit(1) }
+            }
             if let index = CommandLine.arguments.firstIndex(of: "--template"), CommandLine.arguments.indices.contains(index + 1), let document = previewModel.project.overlayLibrary?.first(where: { $0.template.rawValue == CommandLine.arguments[index + 1] }) { previewModel.selectOverlay(document.id) }
             let timelinePreview = CommandLine.arguments.contains("--timeline-preview")
             var timeline: VideoEditorModel?
@@ -101,6 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             CommandGroup(replacing: .newItem) {
                 Button("Import Video…") { model.importVideo() }.keyboardShortcut("i").disabled(model.busy || model.videoEditor != nil)
                 Button("Open Drafts…") { model.draftsOpen = true }.disabled(model.busy || model.videoEditor != nil)
+                Button("Import SVG Overlay…") { model.importSVGOverlay() }.disabled(model.busy || model.importingSVG)
                 Button("Import Script…") { model.importScript() }.keyboardShortcut("o")
                 Button("Edit Script…") { model.editScript() }.keyboardShortcut("e")
             }

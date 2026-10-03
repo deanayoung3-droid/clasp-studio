@@ -76,6 +76,7 @@ enum PrompterMode: String, CaseIterable {
     @Published var recordingSavedOpen = false
     @Published var videoEditor: VideoEditorModel?
     @Published var openingVideoEditor = false
+    @Published var importingSVG = false
     @Published var draftsOpen = false
     private var recordingDraft: URL?
     private var recordedProject: StudioProject?
@@ -382,6 +383,48 @@ enum PrompterMode: String, CaseIterable {
         prompterRunning = false; activeSection = 0; project.sections = sections; project.scriptName = "Custom script"; editorOpen = false
     }
     func editOverlays(_ tab: String = "Library") { overlayEditorTab = tab; overlayEditorOpen = true }
+    func importSVGOverlay(replacing id: UUID? = nil) {
+        guard !busy, !importingSVG else { return }
+        StudioFileDialog.svg { [weak self] url in
+            guard let self else { return }
+            self.importingSVG = true
+            Task {
+                defer { self.importingSVG = false }
+                do {
+                    let data = try await Task.detached {
+                        guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 12 * 1024 * 1024 else { throw StudioError.message("Choose an SVG under 12 MB.") }
+                        return try Data(contentsOf: url)
+                    }.value
+                    let artwork = try await SVGOverlayImport.render(data)
+                    if let id, let index = self.project.overlayLibrary?.firstIndex(where: { $0.id == id }) {
+                        self.project.overlayLibrary?[index].importedSVG = artwork
+                        self.project.overlayLibrary?[index].cameraWindow = nil
+                    } else {
+                        var document = OverlayDocument(name: url.deletingPathExtension().lastPathComponent, template: .custom, title: "", presenter: "", handle: "", date: Date(), headlineHeading: "", brandName: "", brandSubtitle: "", accentHex: "FFFFFF", liveDotHex: "FF343B", titleSize: 39)
+                        document.showDate = false; document.showPresenter = false; document.showHeadlines = false; document.showLive = false; document.showPresentedBy = false; document.showSponsors = false
+                        document.importedSVG = artwork
+                        var library = self.project.overlayLibrary ?? []; library.append(document)
+                        self.project.overlayLibrary = library; self.project.selectedOverlayID = document.id
+                        self.videoEditor?.updateBroadcast(self.project)
+                        self.videoEditor?.changeClip { $0.overlayID = document.id }
+                    }
+                    self.notice = "SVG imported. Original artwork and gradients are ready in your overlay library."
+                } catch { self.alert = error.localizedDescription }
+            }
+        }
+    }
+    func refreshImportedSVG(replacePhotos: Bool? = nil, removeCanvasFill: Bool? = nil) {
+        guard !importingSVG, !busy, let asset = overlay.importedSVG else { return }
+        let id = overlay.id; importingSVG = true
+        Task {
+            defer { importingSVG = false }
+            do {
+                let rendered = try await SVGOverlayImport.render(asset.source, replacePhotos: replacePhotos ?? asset.replacePhotos, removeCanvasFill: removeCanvasFill ?? asset.removeCanvasFill)
+                guard let index = project.overlayLibrary?.firstIndex(where: { $0.id == id }) else { return }
+                project.overlayLibrary?[index].importedSVG = rendered
+            } catch { alert = error.localizedDescription }
+        }
+    }
     func editOverlay(_ change: (inout OverlayDocument) -> Void) {
         var library = project.overlayLibrary ?? OverlayDocument.presets(project)
         guard let index = library.firstIndex(where: { $0.id == overlay.id }) else { return }

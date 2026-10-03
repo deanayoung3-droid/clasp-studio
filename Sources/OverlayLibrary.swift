@@ -4,8 +4,8 @@ import CoreImage
 // Each library entry owns its text, date, visibility and branding. Switching
 // designs never discards edits to the other entries.
 enum OverlayTemplate: String, Codable, CaseIterable {
-    case law = "Law", ai = "AI", aiBlue = "AIBlue", jai = "JAI", glass = "Glass", ticker = "Ticker"
-    var name: String { switch self { case .law: return "Law · Classic"; case .ai: return "AI · Editorial"; case .aiBlue: return "AI · Blue"; case .jai: return "AI · Graphite"; case .glass: return "Law · Glass"; case .ticker: return "Law · Ticker" } }
+    case law = "Law", ai = "AI", aiBlue = "AIBlue", jai = "JAI", glass = "Glass", ticker = "Ticker", custom = "CustomSVG"
+    var name: String { switch self { case .law: return "Law · Classic"; case .ai: return "AI · Editorial"; case .aiBlue: return "AI · Blue"; case .jai: return "AI · Graphite"; case .glass: return "Law · Glass"; case .ticker: return "Law · Ticker"; case .custom: return "Imported SVG" } }
     var dark: Bool { self == .law }
     var sourceWidth: CGFloat { self == .ticker ? 2527 : self == .glass ? 3034 : self == .law ? 3026 : 3008 }
     func box(_ x: CGFloat, _ top: CGFloat, _ width: CGFloat, _ height: CGFloat) -> CGRect {
@@ -64,9 +64,13 @@ struct OverlayDocument: Identifiable, Codable, Equatable {
     var componentStyles: [String: OverlayComponentStyle]?
     var frostRadius: Double?
     var frostOpacity: Double?
+    var importedSVG: ImportedSVGOverlay?
+    var cameraWindow: SVGCameraWindow?
+    var cutCameraWindow: Bool?
+    var artworkOpacity: Double?
     static func presets(_ project: StudioProject) -> [OverlayDocument] {
         let date = ISO8601DateFormatter().date(from: "2026-10-02T12:00:00-07:00")!
-        return OverlayTemplate.allCases.map { template in
+        return OverlayTemplate.allCases.filter { $0 != .custom }.map { template in
             OverlayDocument(name: template.name, template: template, title: (template == .law || template == .glass || template == .ticker) ? (project.broadcastHeadline ?? project.showTitle).components(separatedBy: " - ").first! : "THIS WEEK IN AI", presenter: project.presenter, handle: project.handle, date: date, headlineHeading: template == .glass ? "LEGAL HEADLINES" : template == .law ? "TWIL HEADLINES" : "AI HEADLINES", brandName: (template == .law || template == .glass || template == .ticker) ? "Clasp Legal" : "Clasp", brandSubtitle: (template == .glass || template == .ticker) ? "News Network" : template == .law ? "News" : "AI News", accentHex: (template == .glass || template == .ticker) ? "FFFFFF" : template == .law ? "4376B9" : template == .ai ? "D5F4ED" : template == .jai ? "111318" : "E4EEFF", liveDotHex: (template == .law || template == .glass || template == .ticker) ? "FF343B" : template == .ai ? "85CD90" : template == .jai ? "6B47F5" : "1CCAE3", titleSize: template == .law ? 44 : 60)
         }.map { original in
             var value = original

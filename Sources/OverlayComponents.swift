@@ -85,6 +85,7 @@ extension OverlayDocument {
     }
     func zone(_ component: OverlayComponent) -> CGRect {
         let t = template
+        if t == .custom { return component == .camera ? (cameraWindow ?? importedSVG?.camera ?? SVGCameraWindow()).rect : CGRect(x: 0, y: 0, width: 1280, height: 720) }
         if t == .ticker {
             switch component {
             case .camera: return t.cameraRect

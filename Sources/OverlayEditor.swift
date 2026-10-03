@@ -19,6 +19,7 @@ struct OverlayEditor: View {
                 Image(systemName: "square.3.layers.3d").foregroundStyle(.secondary)
                 TextField("Overlay name", text: value(\.name)).font(.system(size: 13, weight: .medium)).textFieldStyle(.plain).frame(maxWidth: 370)
                 Spacer()
+                Button { model.importSVGOverlay() } label: { Label(model.importingSVG ? "Rendering…" : "Import SVG", systemImage: "plus") }.disabled(model.importingSVG || model.busy).controlSize(.small)
                 Text("Changes save automatically").font(.system(size: 10)).foregroundStyle(.secondary)
                 Menu { Button("Episode details") { tab = "Content" }; Button("Branding") { tab = "Branding" }; Button("Sponsors") { tab = "Sponsors" }; Divider(); Button("Duplicate design") { model.duplicateOverlay() } } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 24)
                 Button("Done") { model.overlayEditorOpen = false }.keyboardShortcut(.defaultAction).font(.system(size: 12, weight: .medium)).padding(.horizontal, 14).padding(.vertical, 7).background(.white).foregroundStyle(.black).clipShape(RoundedRectangle(cornerRadius: 6)).buttonStyle(.plain)
@@ -33,9 +34,9 @@ struct OverlayEditor: View {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack { Image(systemName: "chevron.down").font(.system(size: 9)); Image(systemName: "rectangle.on.rectangle"); Text("Broadcast").fontWeight(.medium) }.padding(10)
-                                ForEach(OverlayComponent.allCases) { component in
+                                ForEach(model.overlay.template == .custom ? [OverlayComponent.camera, .programBrand] : OverlayComponent.allCases) { component in
                                     Button { selected = component; tab = component == .sponsors ? "Sponsors" : "Components" } label: {
-                                        HStack(spacing: 9) { Image(systemName: component.symbol).frame(width: 16).foregroundStyle(selected == component ? Color(red: 0.04, green: 0.61, blue: 0.96) : .secondary); Text(component.name).lineLimit(1); Spacer(minLength: 0); if !component.isVisible(in: model.overlay) { Image(systemName: "eye.slash").font(.system(size: 9)).foregroundStyle(.secondary) } }.padding(.leading, 21).padding(.trailing, 10).frame(height: 35).background(selected == component ? Color.white.opacity(0.07) : .clear).clipShape(RoundedRectangle(cornerRadius: 4))
+                                        HStack(spacing: 9) { Image(systemName: component.symbol).frame(width: 16).foregroundStyle(selected == component ? Color(red: 0.04, green: 0.61, blue: 0.96) : .secondary); Text(model.overlay.template == .custom && component == .programBrand ? "SVG artwork" : component.name).lineLimit(1); Spacer(minLength: 0); if !component.isVisible(in: model.overlay) { Image(systemName: "eye.slash").font(.system(size: 9)).foregroundStyle(.secondary) } }.padding(.leading, 21).padding(.trailing, 10).frame(height: 35).background(selected == component ? Color.white.opacity(0.07) : .clear).clipShape(RoundedRectangle(cornerRadius: 4))
                                     }.buttonStyle(.plain)
                                 }
                             }.font(.system(size: 11)).padding(7)
@@ -52,26 +53,30 @@ struct OverlayEditor: View {
                     Spacer(minLength: 15)
                     HStack(spacing: 4) {
                         componentTool("Select", "cursorarrow", .camera)
+                        if model.overlay.template == .custom { componentTool("SVG artwork", "photo", .programBrand) }
+                        else {
                         componentTool("Title", "textformat", .title)
                         componentTool("LIVE", "dot.radiowaves.left.and.right", .live)
                         componentTool("Logo", "photo", .programBrand)
                         componentTool("Topics", "list.bullet.rectangle", .headlines)
                         componentTool("Sponsors", "arrow.left.arrow.right", .sponsors)
+                        }
                     }.padding(6).background(Color(white: 0.15)).clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.08)))
                     Text("Click text or graphics to edit · Sample camera picture").font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 14).padding(.bottom, 20)
                 }.frame(maxWidth: .infinity).background(Color(white: 0.105))
                 Divider().overlay(Color.white.opacity(0.08))
                 VStack(spacing: 0) {
-                    HStack { Text(tab == "Components" ? selected.name : tab).font(.system(size: 12, weight: .medium)); Spacer() }.padding(16).frame(height: 46)
+                    HStack { Text(model.overlay.template == .custom ? "Imported SVG" : tab == "Components" ? selected.name : tab).font(.system(size: 12, weight: .medium)); Spacer() }.padding(16).frame(height: 46)
                     Divider().overlay(Color.white.opacity(0.08))
-                    if tab == "Components" { OverlayComponentEditor(model: model, preview: canvasPreview, selected: $selected, inspectorOnly: true) }
+                    if model.overlay.template == .custom { ImportedSVGInspector(model: model) }
+                    else if tab == "Components" { OverlayComponentEditor(model: model, preview: canvasPreview, selected: $selected, inspectorOnly: true) }
                     else { ScrollView { Group { if tab == "Content" { content } else if tab == "Branding" { branding } else { sponsors } }.padding(16).frame(maxWidth: .infinity, alignment: .leading) } }
                 }.frame(width: 265).background(Color(white: 0.06))
             }.frame(maxHeight: .infinity)
         }.frame(width: 1180, height: 780).background(Color(white: 0.075)).foregroundStyle(.white).preferredColorScheme(.dark)
         .onAppear { refreshThumbnails() }
         .onDisappear { refreshTask?.cancel() }
-        .onChange(of: model.project.selectedOverlayID) { scheduleRefresh() }
+        .onChange(of: model.project.selectedOverlayID) { if model.overlay.template == .custom { selected = .camera; tab = "Components" }; scheduleRefresh() }
         .onChange(of: model.project.overlayLibrary) { scheduleRefresh() }
         .onChange(of: model.project.sections) { scheduleRefresh() }
         .onChange(of: model.project.sponsorItems) { scheduleRefresh() }
@@ -87,7 +92,7 @@ struct OverlayEditor: View {
             ZStack(alignment: .topLeading) {
                 if let preview = canvasPreview { Image(nsImage: preview).resizable().scaledToFit() }
                 else { Color(white: 0.14) }
-                ForEach(OverlayComponent.allCases.filter { !(model.overlay.template == .law && $0 == .date) }) { component in
+                ForEach((model.overlay.template == .custom ? [OverlayComponent.camera] : OverlayComponent.allCases).filter { !(model.overlay.template == .law && $0 == .date) }) { component in
                     let rect = model.overlay.zone(component)
                     Rectangle().fill(Color.white.opacity(0.001)).frame(width: rect.width * scale, height: rect.height * scale).position(x: rect.midX * scale, y: (720 - rect.midY) * scale).onTapGesture { selected = component; tab = component == .sponsors ? "Sponsors" : "Components" }.accessibilityLabel("Edit \(component.name)")
                 }
