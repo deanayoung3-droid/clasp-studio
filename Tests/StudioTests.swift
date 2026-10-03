@@ -474,7 +474,12 @@ enum StudioTests {
         CMBlockBufferCreateWithMemoryBlock(allocator: nil, memoryBlock: nil, blockLength: 3200, blockAllocator: nil, customBlockSource: nil, offsetToData: 0, dataLength: 3200, flags: 0, blockBufferOut: &block)
         guard let block, let format else { return nil }
         var samples = [Int16](repeating: 0, count: 1600)
-        for i in samples.indices { samples[i] = Int16(sin(Double(index * 1600 + i) * 2 * .pi * 440 / 48000) * 1800) }
+        let angularFrequency: Double = 2.0 * Double.pi * 440.0 / 48000.0
+        let firstSample = index * 1600
+        for i in samples.indices {
+            let phase = Double(firstSample + i) * angularFrequency
+            samples[i] = Int16(sin(phase) * 1800.0)
+        }
         _ = samples.withUnsafeBytes { CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: 3200) }
         var sample: CMSampleBuffer?
         CMAudioSampleBufferCreateReadyWithPacketDescriptions(allocator: nil, dataBuffer: block, formatDescription: format, sampleCount: 1600, presentationTimeStamp: CMTime(value: Int64(index * 1600), timescale: 48000), packetDescriptions: nil, sampleBufferOut: &sample)
