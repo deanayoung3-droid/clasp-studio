@@ -30,8 +30,10 @@ jobs:
         run: ./build.sh --universal
       - name: Verify app behavior and encoder
         run: |
-          '../Clasp Studio.app/Contents/MacOS/ClaspStudio' --self-test --test-output "$RUNNER_TEMP/encoder-check.mov" > verification.log 2>&1
-          tail -12 verification.log
+          test_status=0
+          '../Clasp Studio.app/Contents/MacOS/ClaspStudio' --self-test --test-output "$RUNNER_TEMP/encoder-check.mov" > verification.log 2>&1 || test_status=$?
+          cat verification.log
+          exit "$test_status"
       - name: Package the installer
         run: |
           python3 -m pip install --target .packaging-python -r Packaging/requirements.txt
