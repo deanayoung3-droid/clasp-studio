@@ -1,0 +1,13 @@
+.DS_Store
+.build/
+.packaging-python/
+.venv/
+release/
+*.mov
+*.mp4
+*.dmg
+*.zip
+*.log
+*.key
+private-key.txt
+.signing/

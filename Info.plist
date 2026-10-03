@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>ClaspStudio</string>
+<key>CFBundleIdentifier</key><string>com.clasp.studio</string>
+<key>CFBundleName</key><string>Clasp Studio</string>
+<key>CFBundleDisplayName</key><string>Clasp Studio</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>2.0.1</string>
+<key>CFBundleVersion</key><string>15</string>
+<key>CFBundleIconFile</key><string>AppIcon</string>
+<key>CFBundleIconName</key><string>AppIcon</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSCameraUseContinuityCameraDeviceType</key><true/>
+<key>NSCameraUsageDescription</key><string>Clasp Studio uses your selected camera to preview and record your broadcast.</string>
+<key>NSMicrophoneUsageDescription</key><string>Clasp Studio uses your selected microphone to record your broadcast and follow your voice in the teleprompter.</string>
+<key>NSSpeechRecognitionUsageDescription</key><string>Clasp Studio matches spoken words from your selected microphone to your script so the teleprompter follows your voice.</string>
+<key>NSPrincipalClass</key><string>NSApplication</string>
+</dict></plist>
