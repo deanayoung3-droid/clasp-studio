@@ -85,6 +85,18 @@ extension OverlayDocument {
     }
     func zone(_ component: OverlayComponent) -> CGRect {
         let t = template
+        if t == .ticker {
+            switch component {
+            case .camera: return t.cameraRect
+            case .programBrand: return CGRect(x: 25, y: 97, width: 256, height: 72)
+            case .date: return CGRect(x: 25, y: 67, width: 290, height: 22)
+            case .headlines, .title: return CGRect(x: 319, y: 94, width: 930, height: 80)
+            case .presenter: return CGRect(x: 319, y: 174, width: 930, height: 24)
+            case .live: return CGRect(x: style(.live).rightSide == true ? 1000 : 25, y: 635, width: 246, height: 48)
+            case .presentedBy: return CGRect(x: style(.presentedBy).rightSide == false ? 25 : 948, y: 635, width: 302, height: 50)
+            case .sponsors: return SponsorCarousel.rect
+            }
+        }
         if t == .glass {
             switch component {
             case .camera: return t.cameraRect

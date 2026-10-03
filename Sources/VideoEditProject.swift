@@ -12,10 +12,10 @@ struct EditMedia: Identifiable, Codable, Equatable {
     var duration: Double
 }
 enum EditLayout: String, CaseIterable, Codable {
-    case presenter = "Presenter", replacement = "Image / video", split = "Split screen"
+    case presenter = "Presenter", replacement = "Image / video", split = "Split screen", inset = "Picture in picture"
 }
 enum EditTransition: String, CaseIterable, Codable {
-    case cut = "Cut", news = "News wipe", fade = "Fade through black", library = "Library animation"
+    case cut = "Cut", news = "News wipe", signature = "Clasp reveal", fade = "Fade through black", library = "Library animation"
 }
 struct EditClip: Identifiable, Codable, Equatable {
     var id = UUID()
@@ -36,7 +36,18 @@ struct EditClip: Identifiable, Codable, Equatable {
     var transition = EditTransition.cut
     var transitionDuration = 0.8
     var animationID: UUID?
-    var duration: Double { max(0, end - start) }
+    var speed: Double?
+    var zoom: Double?
+    var panX: Double?
+    var panY: Double?
+    var splitRatio: Double?
+    var swapSides: Bool?
+    var animationStart: Double?
+    var animationOffset: Double?
+    var animationVolume: Double?
+    var animationOpacity: Double?
+    var safeSpeed: Double { min(4, max(0.25, speed?.isFinite == true ? speed! : 1)) }
+    var duration: Double { max(0, end - start) / safeSpeed }
 }
 struct RecordedSectionCue: Codable, Equatable { var time: Double; var section: Int }
 struct VideoEditDocument: Codable {
@@ -57,18 +68,18 @@ struct VideoEditDocument: Codable {
         guard let original = clip(at: time), let index = clips.firstIndex(where: { $0.id == original.id }) else { return nil }
         let offset = time - start(of: original.id)
         guard offset >= 1.0 / 30, original.duration - offset >= 1.0 / 30 else { return nil }
-        var right = original; right.id = UUID(); right.start += offset; right.secondaryStart += offset; right.transition = .cut; right.animationID = nil
+        var right = original; right.id = UUID(); right.start += offset * original.safeSpeed; right.secondaryStart += offset; right.transition = .cut; right.animationID = nil
         clips[index].end = right.start; clips.insert(right, at: index + 1); return right.id
     }
-    func validate() throws {
+    func validate(allowIncomplete: Bool = false) throws {
         guard schema == 1 else { throw StudioError.message("This draft was made by a newer version of Clasp Studio.") }
         guard media.allSatisfy({ $0.fileName == URL(fileURLWithPath: $0.fileName).lastPathComponent && !$0.fileName.isEmpty }) else { throw StudioError.message("A draft media path is invalid.") }
         guard !clips.isEmpty else { throw StudioError.message("Add at least one video clip before exporting.") }
         for clip in clips {
             guard let source = media.first(where: { $0.id == clip.mediaID }), source.kind == .video,
-                  clip.start.isFinite, clip.end.isFinite, clip.start >= 0, clip.duration >= 1.0 / 30, clip.end <= source.duration + 0.02 else { throw StudioError.message("A clip has an invalid source range. Adjust its in and out points.") }
-            if clip.layout != .presenter, !media.contains(where: { $0.id == clip.secondaryID && $0.kind != .animation }) { throw StudioError.message("Choose an image or guest video for the \(clip.layout.rawValue.lowercased()) clip.") }
-            if clip.transition == .library, !media.contains(where: { $0.id == clip.animationID && $0.kind == .animation }) { throw StudioError.message("Choose an animation for this transition.") }
+                  clip.start.isFinite, clip.end.isFinite, clip.start >= 0, clip.duration >= 1.0 / 30, clip.end > clip.start, clip.end <= source.duration + 0.02 else { throw StudioError.message("A clip has an invalid source range. Adjust its in and out points.") }
+            if !allowIncomplete, clip.layout != .presenter, !media.contains(where: { $0.id == clip.secondaryID && $0.kind != .animation }) { throw StudioError.message("Choose an image or guest video for the \(clip.layout.rawValue.lowercased()) clip.") }
+            if !allowIncomplete, clip.transition == .library, !media.contains(where: { $0.id == clip.animationID && $0.kind == .animation }) { throw StudioError.message("Choose an animation for this transition.") }
         }
     }
 }

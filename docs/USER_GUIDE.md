@@ -1,10 +1,10 @@
-# Clasp Studio 2.0.1
+# Clasp Studio 2.0.2
 
 A native macOS app for recording a camera and selected microphone with broadcast graphics and a voice-following teleprompter. Supports macOS 14 or newer, Apple silicon and Intel. The preview app is ad-hoc signed and not notarized.
 
 ## Open this update
 
-Quit an older running copy before opening `outputs/Clasp Studio.app`. Studio settings shows version **2.0.1**. Replacing the files of an app does not update a process that is already running.
+Quit an older running copy before opening `outputs/Clasp Studio.app`. Studio settings shows version **2.0.2**. Replacing the files of an app does not update a process that is already running.
 
 ## Record a take
 
@@ -22,7 +22,7 @@ Voice, camera, and microphone permissions are managed by macOS. If denied, enabl
 
 ## Overlay library and sponsor carousel
 
-**Overlays** opens the library with five designs based on the supplied SVGs: **Law · Classic**, **AI · Editorial**, **AI · Blue**, **AI · Graphite**, and **Law · Glass**. The reference photograph is removed entirely; the selected live camera fills its window. Switching designs preserves each entry’s edits. Duplicate an entry for a new show or episode.
+**Overlays** opens the library with six designs based on the supplied SVGs: **Law · Classic**, **AI · Editorial**, **AI · Blue**, **AI · Graphite**, and **Law · Glass**. The reference photograph is removed entirely; the selected live camera fills its window. Switching designs preserves each entry’s edits. Duplicate an entry for a new show or episode.
 
 **Content** edits the title, episode date, presenter, handle, headline panel heading, script card titles, LIVE label and clock time zone. Visibility switches control the date, presenter, headlines and LIVE badge. **Branding** changes the brand name, subtitle, presented-by label, uploaded brand/program logos, accent and LIVE colors, and title size. The app icon uses the vector Clasp mark.
 
@@ -50,7 +50,7 @@ Run `outputs/ClaspStudio/build.sh --universal` from the workspace to build the a
 
 The executable supports:
 
-- `--self-test --test-output /absolute/path/check.mov`: test script imports, saved-project compatibility, real H.264/AAC encoding/decoding with synthetic inputs, recording transitions, cancellation, full-screen coordination, all five camera windows, overlay-library persistence, sponsor edits and seamless tiling, LIVE animation, animated recording, speech matching, and Metal orientation. Prints a 120-frame compositor benchmark.
+- `--self-test --test-output /absolute/path/check.mov`: test script imports, saved-project compatibility, real H.264/AAC encoding/decoding with synthetic inputs, recording transitions, cancellation, full-screen coordination, all six camera windows, overlay-library persistence, sponsor edits and seamless tiling, LIVE animation, animated recording, speech matching, and Metal orientation. Prints a 120-frame compositor benchmark.
 - `--camera-check`: read-only six-second camera timing check when camera permission is already available. Does not request permission.
 - `--render-preview /absolute/path/preview.png --voice-preview`: render the native UI without opening a studio window or modifying the saved project.
 - `--render-preview /absolute/path/preview.png --template AI` (or `Law`, `AIBlue`): preview a library design.
@@ -86,3 +86,9 @@ Split at a speaker change and select the incoming clip. Its transition can be **
 Choose **Export**, select a name and folder, and wait for the progress indicator. The finished movie is a 1280 × 720 MP4. The saved confirmation’s **Show in Finder** button selects the exported file. Canceling an export keeps the draft and source media; completed exports replace an existing movie only after the new file finishes successfully.
 
 Drafts autosave under `~/Library/Application Support/ClaspStudio/Drafts`. The animation library lives under `~/Library/Application Support/ClaspStudio/Animations`. Apple video effects remain in the recorded camera image. Graphics already burned into imported recordings cannot be separated into editable layers.
+
+## Expanded video editing
+
+The Video inspector provides frame stepping, duplicate, playback speed from 0.25× to 4×, zoom and horizontal/vertical crop positioning. Picture controls include adjustable splits, swapped sides and picture-in-picture. Animation transitions have a source start, start time within the shot, duration, opacity and volume. Drag their timeline bar to move them within that shot. Use **Preview transition** to play from the effect. **Clasp reveal** supplies a cached three-panel broadcast transition.
+
+Law · Glass now blurs only the camera pixels behind its frosted panels. Blur and tint can be adjusted in the Headlines inspector. Law · Ticker uses the original supplied vector branding and an upward scrolling headline beside the brand, following script sections. Its camera remains full frame.

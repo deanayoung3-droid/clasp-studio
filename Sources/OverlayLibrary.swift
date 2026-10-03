@@ -4,14 +4,14 @@ import CoreImage
 // Each library entry owns its text, date, visibility and branding. Switching
 // designs never discards edits to the other entries.
 enum OverlayTemplate: String, Codable, CaseIterable {
-    case law = "Law", ai = "AI", aiBlue = "AIBlue", jai = "JAI", glass = "Glass"
-    var name: String { switch self { case .law: return "Law · Classic"; case .ai: return "AI · Editorial"; case .aiBlue: return "AI · Blue"; case .jai: return "AI · Graphite"; case .glass: return "Law · Glass" } }
+    case law = "Law", ai = "AI", aiBlue = "AIBlue", jai = "JAI", glass = "Glass", ticker = "Ticker"
+    var name: String { switch self { case .law: return "Law · Classic"; case .ai: return "AI · Editorial"; case .aiBlue: return "AI · Blue"; case .jai: return "AI · Graphite"; case .glass: return "Law · Glass"; case .ticker: return "Law · Ticker" } }
     var dark: Bool { self == .law }
-    var sourceWidth: CGFloat { self == .glass ? 3034 : self == .law ? 3026 : 3008 }
+    var sourceWidth: CGFloat { self == .ticker ? 2527 : self == .glass ? 3034 : self == .law ? 3026 : 3008 }
     func box(_ x: CGFloat, _ top: CGFloat, _ width: CGFloat, _ height: CGFloat) -> CGRect {
-        CGRect(x: x * 1280 / sourceWidth, y: 720 - (top + height) * 720 / (self == .glass ? 1708 : 1702), width: width * 1280 / sourceWidth, height: height * 720 / (self == .glass ? 1708 : 1702))
+        CGRect(x: x * 1280 / sourceWidth, y: 720 - (top + height) * 720 / (self == .ticker ? 1677 : self == .glass ? 1708 : 1702), width: width * 1280 / sourceWidth, height: height * 720 / (self == .ticker ? 1677 : self == .glass ? 1708 : 1702))
     }
-    var cameraRect: CGRect { self == .glass ? CGRect(x: 0, y: 0, width: 1280, height: 720) : self == .law ? box(63.0371, 56.7334, 2111.74, 1197.7) : box(32, 28, 2111.74, 1197.7) }
+    var cameraRect: CGRect { (self == .glass || self == .ticker) ? CGRect(x: 0, y: 0, width: 1280, height: 720) : self == .law ? box(63.0371, 56.7334, 2111.74, 1197.7) : box(32, 28, 2111.74, 1197.7) }
     var artwork: CGImage? { OverlayAssets.images[rawValue] }
 }
 enum OverlayAssets {
@@ -62,10 +62,16 @@ struct OverlayDocument: Identifiable, Codable, Equatable {
     var brandLogoData: Data?
     var programLogoData: Data?
     var componentStyles: [String: OverlayComponentStyle]?
+    var frostRadius: Double?
+    var frostOpacity: Double?
     static func presets(_ project: StudioProject) -> [OverlayDocument] {
         let date = ISO8601DateFormatter().date(from: "2026-10-02T12:00:00-07:00")!
         return OverlayTemplate.allCases.map { template in
-            OverlayDocument(name: template.name, template: template, title: (template == .law || template == .glass) ? (project.broadcastHeadline ?? project.showTitle).components(separatedBy: " - ").first! : "THIS WEEK IN AI", presenter: project.presenter, handle: project.handle, date: date, headlineHeading: template == .glass ? "LEGAL HEADLINES" : template == .law ? "TWIL HEADLINES" : "AI HEADLINES", brandName: (template == .law || template == .glass) ? "Clasp Legal" : "Clasp", brandSubtitle: template == .glass ? "News Network" : template == .law ? "News" : "AI News", accentHex: template == .glass ? "FFFFFF" : template == .law ? "4376B9" : template == .ai ? "D5F4ED" : template == .jai ? "111318" : "E4EEFF", liveDotHex: (template == .law || template == .glass) ? "FF343B" : template == .ai ? "85CD90" : template == .jai ? "6B47F5" : "1CCAE3", titleSize: template == .law ? 44 : 60)
+            OverlayDocument(name: template.name, template: template, title: (template == .law || template == .glass || template == .ticker) ? (project.broadcastHeadline ?? project.showTitle).components(separatedBy: " - ").first! : "THIS WEEK IN AI", presenter: project.presenter, handle: project.handle, date: date, headlineHeading: template == .glass ? "LEGAL HEADLINES" : template == .law ? "TWIL HEADLINES" : "AI HEADLINES", brandName: (template == .law || template == .glass || template == .ticker) ? "Clasp Legal" : "Clasp", brandSubtitle: (template == .glass || template == .ticker) ? "News Network" : template == .law ? "News" : "AI News", accentHex: (template == .glass || template == .ticker) ? "FFFFFF" : template == .law ? "4376B9" : template == .ai ? "D5F4ED" : template == .jai ? "111318" : "E4EEFF", liveDotHex: (template == .law || template == .glass || template == .ticker) ? "FF343B" : template == .ai ? "85CD90" : template == .jai ? "6B47F5" : "1CCAE3", titleSize: template == .law ? 44 : 60)
+        }.map { original in
+            var value = original
+            if value.template == .ticker { value.showPresenter = false; value.showLive = false; value.showPresentedBy = false }
+            return value
         }
     }
     func dateText(in timeZone: String?, compact: Bool = false) -> String {
@@ -94,9 +100,11 @@ struct BroadcastAnimation: @unchecked Sendable {
     var liveDot: CIImage?
     var pulseLive: Bool
     var epoch: Double
+    var headlineTicker: HeadlineTicker? = nil
     func frame(at time: Double) -> CIImage? {
         let elapsed = max(0, time - epoch)
         var result = sponsors?.frame(at: sponsorMoving ? elapsed : 0, speed: sponsorSpeed)
+        if let ticker = headlineTicker { let layer = ticker.frame(at: time); result = result.map { layer.composited(over: $0) } ?? layer }
         if let liveDot {
             let alpha = pulseLive ? 0.45 + 0.55 * (sin(elapsed * .pi * 2 / 1.6) + 1) / 2 : 1
             let pulsed = liveDot.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha)])
@@ -111,9 +119,10 @@ struct BroadcastFrameRenderer: @unchecked Sendable {
     let settings: RenderSettings
     private let overlay: CIImage?
     private let mask: CIImage?
+    private let frostMask: CIImage?
     init(_ settings: RenderSettings) {
         self.settings = settings; overlay = settings.overlay.map(CIImage.init(cgImage:))
-        mask = settings.cameraMask.map(CIImage.init(cgImage:))
+        mask = settings.cameraMask.map(CIImage.init(cgImage:)); frostMask = settings.frostMask.map(CIImage.init(cgImage:))
     }
     func compose(_ source: CIImage, at time: Double = ProcessInfo.processInfo.systemUptime) -> CIImage {
         let rect = settings.cameraRect
@@ -124,6 +133,10 @@ struct BroadcastFrameRenderer: @unchecked Sendable {
     func composePreparedCamera(_ prepared: CIImage, at time: Double) -> CIImage {
         var camera = prepared
         if let mask { camera = camera.applyingFilter("CIBlendWithAlphaMask", parameters: [kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: CGRect(x: 0, y: 0, width: 1280, height: 720)), kCIInputMaskImageKey: mask]) }
+        if let frostMask, settings.frostRadius > 0 {
+            let blurred = camera.clampedToExtent().applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: settings.frostRadius]).cropped(to: camera.extent)
+            camera = blurred.applyingFilter("CIBlendWithAlphaMask", parameters: [kCIInputBackgroundImageKey: camera, kCIInputMaskImageKey: frostMask])
+        }
         var frame = overlay.map { $0.composited(over: camera) } ?? camera
         if let moving = settings.animation?.frame(at: time) { frame = moving.composited(over: frame) }
         return frame.cropped(to: CGRect(x: 0, y: 0, width: 1280, height: 720))

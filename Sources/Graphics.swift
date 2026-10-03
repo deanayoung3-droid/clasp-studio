@@ -7,6 +7,8 @@ struct RenderSettings: @unchecked Sendable {
     var cameraRect = CGRect(x: 0, y: 0, width: 1280, height: 720)
     var cameraMask: CGImage?
     var animation: BroadcastAnimation?
+    var frostMask: CGImage?
+    var frostRadius: Double = 0
 }
 enum BroadcastGraphics {
     static let width = 1280
@@ -73,7 +75,7 @@ enum BroadcastGraphics {
         let library = project.overlayLibrary ?? OverlayDocument.presets(project)
         return library.first(where: { $0.id == project.selectedOverlayID }) ?? library.first ?? OverlayDocument.presets(project)[0]
     }
-    static func renderSettings(_ project: StudioProject, activeIndex: Int, at date: Date = Date(), epoch: Double = 0) -> RenderSettings {
+    static func renderSettings(_ project: StudioProject, activeIndex: Int, at date: Date = Date(), epoch: Double = 0, previousSection: Int? = nil, tickerEpoch: Double? = nil) -> RenderSettings {
         guard project.graphics else { return RenderSettings(overlay: nil, mirror: project.mirror) }
         let doc = document(project), template = doc.template
         let rect = template.cameraRect
@@ -81,8 +83,14 @@ enum BroadcastGraphics {
         let sponsors = doc.showSponsors ? SponsorCarousel(items: SponsorCatalog.migrated(project), monochrome: template == .glass) : nil
         let dot: CIImage? = doc.showLive ? liveDot(doc).map { image, origin in CIImage(cgImage: image).transformed(by: CGAffineTransform(translationX: origin.x, y: origin.y)) } : nil
         let motionAllowed = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let animation = BroadcastAnimation(sponsors: sponsors, sponsorSpeed: project.carouselSpeed ?? 32, sponsorMoving: project.carouselMoving != false && motionAllowed, liveDot: dot, pulseLive: doc.pulseLive && motionAllowed, epoch: epoch)
-        return RenderSettings(overlay: baseOverlay(project, doc: doc, activeIndex: activeIndex, at: date), mirror: project.mirror, cameraRect: rect, cameraMask: mask, animation: animation)
+        var animation = BroadcastAnimation(sponsors: sponsors, sponsorSpeed: project.carouselSpeed ?? 32, sponsorMoving: project.carouselMoving != false && motionAllowed, liveDot: dot, pulseLive: doc.pulseLive && motionAllowed, epoch: epoch)
+        if template == .ticker, doc.showHeadlines {
+            let current = project.sections.indices.contains(activeIndex) ? project.sections[activeIndex].title : doc.title
+            let previous = previousSection.flatMap { project.sections.indices.contains($0) ? project.sections[$0].title : nil }
+            animation.headlineTicker = HeadlineTicker(current: current, previous: previous, zone: doc.textZone(.headlines), style: doc.style(.headlines), epoch: tickerEpoch ?? -1_000_000, color: NSColor(studioHex: doc.accentHex))
+        }
+        let frost = template == .glass ? glassFrostMask(doc) : nil
+        return RenderSettings(overlay: baseOverlay(project, doc: doc, activeIndex: activeIndex, at: date), mirror: project.mirror, cameraRect: rect, cameraMask: mask, animation: animation, frostMask: frost, frostRadius: template == .glass ? min(40, max(0, doc.frostRadius ?? 22)) : 0)
     }
     static func overlay(_ project: StudioProject, section: String, activeIndex: Int? = nil, at date: Date = Date()) -> CGImage? {
         let settings = renderSettings(project, activeIndex: activeIndex ?? project.sections.firstIndex(where: { $0.title == section }) ?? 0, at: date)
@@ -101,6 +109,7 @@ enum BroadcastGraphics {
         }.map { ($0, CGPoint(x: rect.minX + 9, y: rect.midY - 11)) }
     }
     private static func baseOverlay(_ project: StudioProject, doc: OverlayDocument, activeIndex: Int, at date: Date) -> CGImage? {
+        if doc.template == .ticker { return tickerOverlay(project, doc: doc, at: date) }
         if doc.template == .glass { return glassOverlay(project, doc: doc, activeIndex: activeIndex, at: date) }
         return image { ctx in
             let t = doc.template, dark = t.dark, accent = NSColor(studioHex: doc.accentHex)

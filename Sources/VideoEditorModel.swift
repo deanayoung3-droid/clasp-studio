@@ -5,7 +5,10 @@ import UniformTypeIdentifiers
 import Combine
 
 @MainActor final class VideoEditorModel: ObservableObject {
-    @Published var document: VideoEditDocument { didSet { scheduleSave(); scheduleRebuild() } }
+    @Published var document: VideoEditDocument { didSet {
+        scheduleSave()
+        if document.clips != oldValue.clips || document.media != oldValue.media || (try? JSONEncoder().encode(document.broadcast)) != (try? JSONEncoder().encode(oldValue.broadcast)) { scheduleRebuild() }
+    } }
     let folder: URL
     let player = AVPlayer()
     let animations = AnimationLibrary()
@@ -20,6 +23,11 @@ import Combine
     @Published var status = "Draft saved · original media stays intact"
     @Published var presentationStill: NSImage?
     @Published var previewFailure: String?
+    @Published var pausedFrame: NSImage?
+    private var frameTask: Task<Void, Never>?
+    private var frameGeneration = 0
+    private var seekGeneration = 0
+    private var seeking = false
     private var playerStatusObserver: NSKeyValueObservation?
     @Published var thumbnails: [UUID: NSImage] = [:]
     @Published var animationLibraryOpen = false
@@ -38,11 +46,11 @@ import Combine
     init(document: VideoEditDocument, folder: URL) {
         self.document = document; self.folder = folder; selection = document.clips.first?.id
         player.actionAtItemEnd = .pause
-        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.05, preferredTimescale: 600), queue: .main) { [weak self] time in Task { @MainActor in self?.position = time.seconds.isFinite ? time.seconds : 0 } }
-        finishObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] notification in Task { @MainActor in guard let self, notification.object as? AVPlayerItem === self.player.currentItem else { return }; self.playing = false } }
+        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.05, preferredTimescale: 600), queue: .main) { [weak self] time in Task { @MainActor in guard let self, self.playing, !self.preparing, !self.seeking else { return }; self.position = time.seconds.isFinite ? time.seconds : 0 } }
+        finishObserver = NotificationCenter.default.addObserver(forName: .AVPlayerItemDidPlayToEndTime, object: nil, queue: .main) { [weak self] notification in Task { @MainActor in guard let self, notification.object as? AVPlayerItem === self.player.currentItem else { return }; self.playing = false; self.requestPausedFrame() } }
         scheduleRebuild(); Task { await refreshThumbnails() }
     }
-    func stop() { player.pause(); playing = false; rebuildTask?.cancel(); saveTask?.cancel(); try? EditStorage.save(document, at: folder); if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }; if let finishObserver { NotificationCenter.default.removeObserver(finishObserver); self.finishObserver = nil } }
+    func stop() { player.pause(); playing = false; frameTask?.cancel(); rebuildTask?.cancel(); saveTask?.cancel(); try? EditStorage.save(document, at: folder); if let timeObserver { player.removeTimeObserver(timeObserver); self.timeObserver = nil }; if let finishObserver { NotificationCenter.default.removeObserver(finishObserver); self.finishObserver = nil } }
     func saveNow() { do { try EditStorage.save(document, at: folder) } catch { self.error = "The draft could not be saved: " + error.localizedDescription } }
     func scheduleSave() {
         saveTask?.cancel()
@@ -69,8 +77,8 @@ import Combine
         }
         seek(document.start(of: clip.id))
     }
-    func setIn() { guard let clip = document.clip(at: position) else { return }; selection = clip.id; trim(start: clip.start + position - document.start(of: clip.id)) }
-    func setOut() { guard let clip = document.clip(at: position) else { return }; selection = clip.id; trim(end: clip.start + position - document.start(of: clip.id)) }
+    func setIn() { guard let clip = document.clip(at: position) else { return }; selection = clip.id; trim(start: clip.start + (position - document.start(of: clip.id)) * clip.safeSpeed) }
+    func setOut() { guard let clip = document.clip(at: position) else { return }; selection = clip.id; trim(end: clip.start + (position - document.start(of: clip.id)) * clip.safeSpeed) }
     func split() {
         guard !isExporting else { return }
         var copy = document
@@ -88,10 +96,41 @@ import Combine
         remember(); var copy = document; let item = copy.clips.remove(at: index); copy.clips.insert(item, at: destination); document = copy; selection = id; seek(document.start(of: id))
     }
     func select(_ id: UUID) { selection = id; seek(document.start(of: id)) }
-    func seek(_ seconds: Double) { position = max(0, min(duration, seconds)); player.seek(to: EditCompositionBuilder.time(position), toleranceBefore: .zero, toleranceAfter: .zero) }
+    func seek(_ seconds: Double) {
+        position = max(0, min(max(0, duration - 1.0 / 600), seconds)); seekGeneration += 1
+        let token = seekGeneration; seeking = true
+        player.seek(to: EditCompositionBuilder.time(position), toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in Task { @MainActor in guard let self, token == self.seekGeneration else { return }; self.seeking = false } }
+        requestPausedFrame()
+    }
+    func requestPausedFrame() {
+        frameTask?.cancel(); frameGeneration += 1
+        guard !playing, !preparing, let result else { return }
+        let token = frameGeneration, compositionToken = generation
+        let time = floor(min(position, max(0, duration - 1.0 / 30)) * 30) / 30
+        frameTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: 45_000_000)
+                let generator = AVAssetImageGenerator(asset: result.composition)
+                generator.videoComposition = result.video; generator.maximumSize = CGSize(width: 1280, height: 720)
+                generator.requestedTimeToleranceBefore = .zero; generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 30)
+                let (image, _) = try await withTaskCancellationHandler(operation: { try await generator.image(at: EditCompositionBuilder.time(time)) }, onCancel: { generator.cancelAllCGImageGeneration() })
+                guard let self, !Task.isCancelled, token == self.frameGeneration, compositionToken == self.generation else { return }
+                self.pausedFrame = NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+            } catch { /* A canceled scrub keeps the last frame until the newest seek completes. */ }
+        }
+    }
+    func stepFrame(_ direction: Int) { player.pause(); playing = false; seek(position + Double(direction) / 30) }
+    func duplicate() {
+        guard !isExporting, let selected, let index = document.clips.firstIndex(where: { $0.id == selected.id }) else { return }
+        remember(); var copy = document, clone = selected; clone.id = UUID(); copy.clips.insert(clone, at: index + 1); document = copy; selection = clone.id; seek(document.start(of: clone.id))
+    }
+    func setSpeed(_ speed: Double) { changeClip { $0.speed = min(4, max(0.25, speed)) }; if let selected { seek(document.start(of: selected.id)) } }
+    func previewTransition() { guard let selected else { return }; seek(document.start(of: selected.id) + max(0, selected.animationOffset ?? 0)); togglePlayback() }
+    func clearAnimation() { changeClip { $0.animationID = nil; $0.transition = .cut; $0.animationStart = nil; $0.animationOffset = nil } }
+
     func togglePlayback() {
         guard !preparing, !isExporting, result != nil else { return }
-        if playing { player.pause(); playing = false }
+        if playing { player.pause(); playing = false; requestPausedFrame() }
         else { if position >= duration - 0.03 { seek(0) }; player.play(); playing = true }
     }
     func scheduleRebuild() {
@@ -103,13 +142,14 @@ import Combine
         rebuildTask = Task { [weak self] in
             do {
                 try await Task.sleep(nanoseconds: 180_000_000)
-                let buildTask = Task.detached(priority: .userInitiated) { try await EditCompositionBuilder.build(copy, folder: directory) }
+                let buildTask = Task.detached(priority: .userInitiated) { try await EditCompositionBuilder.build(copy, folder: directory, preview: true) }
                 let result = try await withTaskCancellationHandler(operation: { try await buildTask.value }, onCancel: { buildTask.cancel() })
                 guard let self, !Task.isCancelled, token == self.generation else { return }
                 self.result = result
                 let item = result.playerItem()
                 self.playerStatusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
-                    if item.status == .failed { Task { @MainActor in self?.previewFailure = item.error?.localizedDescription ?? "The video could not be decoded."; self?.playing = false } }
+                    if item.status == .readyToPlay { Task { @MainActor in guard let self, token == self.generation else { return }; self.seek(self.position) } }
+                    if item.status == .failed { Task { @MainActor in guard let self, token == self.generation else { return }; self.previewFailure = item.error?.localizedDescription ?? "The video could not be decoded."; self.playing = false } }
                 }
                 self.player.replaceCurrentItem(with: item); self.preparing = false
                 self.seek(min(self.position, max(0, self.duration - 0.01))); self.status = "Draft saved · \(self.document.clips.count) clips · \(Self.time(self.duration))"
@@ -152,7 +192,7 @@ import Combine
         }
     }
     func applyAnimation(_ item: LibraryAnimation) {
-        guard !isExporting, selected != nil else { return }
+        guard !isExporting, !importing, let targetID = selected?.id else { return }
         importing = true
         Task {
             do {
@@ -160,8 +200,8 @@ import Combine
                 let destination = EditStorage.source(media, in: folder), source = EditStorage.animations.appendingPathComponent(item.fileName)
                 try await Task.detached { try FileManager.default.copyItem(at: source, to: destination) }.value
                 remember(); var copy = document; copy.media.append(media)
-                if let index = copy.clips.firstIndex(where: { $0.id == selection }) { copy.clips[index].animationID = media.id; copy.clips[index].transition = .library; copy.clips[index].transitionDuration = item.duration }
-                document = copy; animationLibraryOpen = false
+                if let index = copy.clips.firstIndex(where: { $0.id == targetID }) { copy.clips[index].animationID = media.id; copy.clips[index].transition = .library; copy.clips[index].transitionDuration = min(item.duration, copy.clips[index].duration); copy.clips[index].animationStart = 0; copy.clips[index].animationOffset = 0; copy.clips[index].animationOpacity = 1; copy.clips[index].animationVolume = 1 }
+                document = copy; selection = targetID; seek(document.start(of: targetID)); animationLibraryOpen = false; await refreshThumbnails()
             } catch { self.error = error.localizedDescription }
             importing = false
         }

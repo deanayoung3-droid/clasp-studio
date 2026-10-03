@@ -11,7 +11,7 @@ struct EditCompositionResult: @unchecked Sendable {
     }
 }
 enum EditCompositionBuilder {
-    static func time(_ seconds: Double) -> CMTime { CMTime(seconds: seconds, preferredTimescale: 600) }
+    static func time(_ seconds: Double) -> CMTime { CMTime(value: Int64((seconds * 600).rounded()), timescale: 600) }
     private struct Source {
         let asset: AVURLAsset
         let video: AVAssetTrack
@@ -24,8 +24,8 @@ enum EditCompositionBuilder {
         let intersection = CMTimeRangeGetIntersection(range, otherRange: available)
         if intersection.duration.seconds > 0 { try target.insertTimeRange(intersection, of: source, at: CMTimeAdd(start, CMTimeSubtract(intersection.start, range.start))) }
     }
-    static func build(_ document: VideoEditDocument, folder: URL) async throws -> EditCompositionResult {
-        try document.validate()
+    static func build(_ document: VideoEditDocument, folder: URL, preview: Bool = false) async throws -> EditCompositionResult {
+        try document.validate(allowIncomplete: preview)
         let composition = AVMutableComposition()
         guard let primary = composition.addMutableTrack(withMediaType: .video, preferredTrackID: 1), let primaryAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: 2), let secondary = composition.addMutableTrack(withMediaType: .video, preferredTrackID: 3), let secondaryAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: 4), let animation = composition.addMutableTrack(withMediaType: .video, preferredTrackID: 5), let animationAudio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: 6) else { throw StudioError.message("The timeline could not be created.") }
         let mainMix = AVMutableAudioMixInputParameters(track: primaryAudio)
@@ -50,9 +50,15 @@ enum EditCompositionBuilder {
         for (index, clip) in document.clips.enumerated() {
             try Task.checkCancellation()
             guard let source = sources[clip.mediaID] else { throw StudioError.message("A clip source is unavailable.") }
-            let start = time(cursor), range = CMTimeRange(start: time(clip.start), duration: time(clip.duration))
+            let start = time(cursor), timelineDuration = CMTimeSubtract(time(cursor + clip.duration), time(cursor))
+            let range = CMTimeRange(start: time(clip.start), duration: CMTimeSubtract(time(clip.end), time(clip.start)))
             try primary.insertTimeRange(range, of: source.video, at: start)
             try await audio(source.audio, into: primaryAudio, range: range, at: start)
+            if CMTimeCompare(range.duration, timelineDuration) != 0 {
+                let inserted = CMTimeRange(start: start, duration: range.duration)
+                primary.scaleTimeRange(inserted, toDuration: timelineDuration)
+                if source.audio != nil { primaryAudio.scaleTimeRange(inserted, toDuration: timelineDuration) }
+            }
             let volume = Float(min(1, max(0, clip.volume)))
             mainMix.setVolume(volume, at: start); guestMix.setVolume(clip.secondaryAudio ? 1 : 0, at: start)
             var guestID: CMPersistentTrackID?, animationID: CMPersistentTrackID?, guestTransform = CGAffineTransform.identity, animationTransform = CGAffineTransform.identity, animationDuration = 0.0
@@ -73,19 +79,37 @@ enum EditCompositionBuilder {
                 }
             }
             if clip.transition == .library, let id = clip.animationID, let asset = sources[id], let media = document.media.first(where: { $0.id == id }) {
-                animationDuration = min(media.duration, clip.duration); animationID = animation.trackID; animationTransform = asset.transform
-                let range = CMTimeRange(start: .zero, duration: time(animationDuration))
-                try animation.insertTimeRange(range, of: asset.video, at: start)
-                try await audio(asset.audio, into: animationAudio, range: range, at: start)
-                if asset.audio != nil { mainMix.setVolume(volume * 0.25, at: start); guestMix.setVolume(clip.secondaryAudio ? 0.25 : 0, at: start); mainMix.setVolume(volume, at: time(cursor + animationDuration)); guestMix.setVolume(clip.secondaryAudio ? 1 : 0, at: time(cursor + animationDuration)) }
+                let sourceStart = min(max(0, clip.animationStart ?? 0), max(0, media.duration - 1.0 / 30))
+                let offset = min(max(0, clip.animationOffset ?? 0), max(0, clip.duration - 1.0 / 30))
+                animationDuration = min(media.duration - sourceStart, clip.duration - offset, max(1.0 / 30, clip.transitionDuration))
+                animationID = animation.trackID; animationTransform = asset.transform
+                let range = CMTimeRange(start: time(sourceStart), duration: time(animationDuration)), destination = time(cursor + offset)
+                try animation.insertTimeRange(range, of: asset.video, at: destination)
+                try await audio(asset.audio, into: animationAudio, range: range, at: destination)
+                let animationVolume = Float(min(1, max(0, clip.animationVolume ?? 1)))
+                animationMix.setVolume(animationVolume, at: destination)
+                if asset.audio != nil, animationVolume > 0 {
+                    mainMix.setVolume(volume * 0.25, at: destination); guestMix.setVolume(clip.secondaryAudio ? 0.25 : 0, at: destination)
+                    mainMix.setVolume(volume, at: time(cursor + offset + animationDuration)); guestMix.setVolume(clip.secondaryAudio ? 1 : 0, at: time(cursor + offset + animationDuration))
+                }
             }
             let key = "\(clip.overlayID?.uuidString ?? "default")-\(clip.graphics)-\(clip.topics)-\(clip.mirror)-\(clip.section)"
-            let renderer = renderers[key] ?? EditShotRenderer(clip: clip, project: document.broadcast).renderer
-            renderers[key] = renderer
+            let previousSection = index > 0 ? document.clips[index - 1].section : nil
+            let localDesign = document.broadcast.overlayLibrary?.first(where: { $0.id == clip.overlayID }) ?? BroadcastGraphics.document(document.broadcast)
+            let scopedKey = key + (localDesign.template == .ticker ? "-\(cursor)-\(previousSection ?? -1)" : "")
+            let renderer = renderers[scopedKey] ?? EditShotRenderer(clip: clip, project: document.broadcast, previousSection: previousSection, tickerEpoch: cursor).renderer
+            renderers[scopedKey] = renderer
             let shot = EditShotRenderer(clip: clip, renderer: renderer)
             let next = document.clips.indices.contains(index + 1) ? document.clips[index + 1] : nil
             let fadeOut = next?.transition == .fade ? min((next?.transitionDuration ?? 0.8) / 2, clip.duration / 2) : 0
-            instructions.append(EditCompositionInstruction(range: CMTimeRange(start: start, duration: time(clip.duration)), primary: primary.trackID, secondary: guestID, animation: animationID, primaryTransform: source.transform, secondaryTransform: guestTransform, animationTransform: animationTransform, still: clip.secondaryID.flatMap { stills[$0] }, shot: shot, animationDuration: animationDuration, fadeOutDuration: fadeOut, newsOutDuration: next?.transition == .news ? min((next?.transitionDuration ?? 0.8) / 2, clip.duration) : 0))
+            let offset = min(max(0, clip.animationOffset ?? 0), max(0, clip.duration - 1.0 / 30))
+            let boundaries = Array(Set([0.0, clip.duration] + (animationID != nil ? [offset, offset + animationDuration] : []))).sorted()
+            for interval in 0..<(boundaries.count - 1) {
+                let begin = boundaries[interval], end = boundaries[interval + 1]
+                guard end - begin > 0.0001 else { continue }
+                let activeAnimation = begin >= offset - 0.0001 && begin < offset + animationDuration - 0.0001 ? animationID : nil
+                instructions.append(EditCompositionInstruction(range: CMTimeRange(start: time(cursor + begin), duration: CMTimeSubtract(time(cursor + end), time(cursor + begin))), shotRange: CMTimeRange(start: start, duration: timelineDuration), primary: primary.trackID, secondary: guestID, animation: activeAnimation, primaryTransform: source.transform, secondaryTransform: guestTransform, animationTransform: animationTransform, still: clip.secondaryID.flatMap { stills[$0] }, shot: shot, animationDuration: animationDuration, animationOffset: offset, fadeOutDuration: fadeOut, newsOutDuration: next?.transition == .news || next?.transition == .signature ? min((next?.transitionDuration ?? 0.8) / 2, clip.duration) : 0, signatureOut: next?.transition == .signature))
+            }
             cursor += clip.duration
         }
         // Empty audio tracks with audio-mix parameters make AVFoundation reject
@@ -94,7 +118,7 @@ enum EditCompositionBuilder {
         for track in [primaryAudio, secondaryAudio, animationAudio, secondary, animation] where track.segments.isEmpty { composition.removeTrack(track) }
         let video = AVMutableVideoComposition(); video.customVideoCompositorClass = EditVideoCompositor.self
         video.renderSize = CGSize(width: 1280, height: 720); video.frameDuration = CMTime(value: 1, timescale: 30); video.instructions = instructions
-        let audioMix = AVMutableAudioMix(); animationMix.setVolume(1, at: .zero); audioMix.inputParameters = [mainMix, guestMix, animationMix].filter { populatedAudio.contains($0.trackID) }
+        let audioMix = AVMutableAudioMix(); audioMix.inputParameters = [mainMix, guestMix, animationMix].filter { populatedAudio.contains($0.trackID) }
         return EditCompositionResult(composition: composition, video: video, audio: audioMix)
     }
 }

@@ -6,7 +6,7 @@ struct EditShotRenderer: @unchecked Sendable {
     let clip: EditClip
     let renderer: BroadcastFrameRenderer
     init(clip: EditClip, renderer: BroadcastFrameRenderer) { self.clip = clip; self.renderer = renderer }
-    init(clip: EditClip, project: StudioProject) {
+    init(clip: EditClip, project: StudioProject, previousSection: Int? = nil, tickerEpoch: Double? = nil) {
         self.clip = clip
         var project = project; project.graphics = clip.graphics; project.mirror = clip.mirror
         if let id = clip.overlayID { project.selectedOverlayID = id }
@@ -14,8 +14,8 @@ struct EditShotRenderer: @unchecked Sendable {
             let docID = BroadcastGraphics.document(project).id
             if let index = project.overlayLibrary?.firstIndex(where: { $0.id == docID }) { project.overlayLibrary?[index].showHeadlines = false }
         }
-        var settings = BroadcastGraphics.renderSettings(project, activeIndex: clip.section, at: BroadcastGraphics.document(project).date, epoch: 0)
-        if clip.graphics && !clip.topics && BroadcastGraphics.document(project).template != .glass {
+        var settings = BroadcastGraphics.renderSettings(project, activeIndex: clip.section, at: BroadcastGraphics.document(project).date, epoch: 0, previousSection: previousSection, tickerEpoch: tickerEpoch)
+        if clip.graphics && !clip.topics && ![OverlayTemplate.glass, .ticker].contains(BroadcastGraphics.document(project).template) {
             let old = settings.cameraRect
             let wide = CGRect(x: 14, y: old.minY, width: 1252, height: 720 - old.minY - 12)
             let doc = BroadcastGraphics.document(project)
@@ -35,17 +35,33 @@ struct EditShotRenderer: @unchecked Sendable {
         renderer = BroadcastFrameRenderer(settings)
     }
     func frame(primary: CIImage, secondary: CIImage?, at time: Double) -> CIImage {
-        if clip.layout == .presenter { return renderer.compose(primary, at: time) }
+        let primary = Self.crop(primary, zoom: clip.zoom ?? 1, x: clip.panX ?? 0, y: clip.panY ?? 0)
+        if clip.layout == .presenter || secondary == nil { return renderer.compose(primary, at: time) }
         let rect = renderer.settings.cameraRect
         var host = primary
         if clip.mirror { host = Self.mirror(host) }
         let secondary = secondary ?? CIImage(color: .black).cropped(to: rect)
         if clip.layout == .replacement { return renderer.composePreparedCamera(Self.fit(secondary, to: rect, fill: clip.secondaryFill), at: time) }
-        let left = CGRect(x: rect.minX, y: rect.minY, width: (rect.width - 6) / 2, height: rect.height)
-        let right = CGRect(x: left.maxX + 6, y: rect.minY, width: left.width, height: rect.height)
+        if clip.layout == .inset {
+            let inset = CGRect(x: clip.swapSides == true ? rect.minX + 18 : rect.maxX - rect.width * 0.32 - 18, y: rect.minY + 18, width: rect.width * 0.32, height: rect.height * 0.32)
+            let matte = CIImage(color: .white).cropped(to: inset.insetBy(dx: -2, dy: -2))
+            let picture = Self.fit(secondary, to: inset, fill: clip.secondaryFill).composited(over: matte)
+            return renderer.composePreparedCamera(picture.composited(over: Self.fit(host, to: rect, fill: true)), at: time)
+        }
+        let ratio = min(0.75, max(0.25, clip.splitRatio ?? 0.5))
+        let left = CGRect(x: rect.minX, y: rect.minY, width: (rect.width - 6) * ratio, height: rect.height)
+        let right = CGRect(x: left.maxX + 6, y: rect.minY, width: rect.width - left.width - 6, height: rect.height)
+        let leftImage = clip.swapSides == true ? secondary : host
+        let rightImage = clip.swapSides == true ? host : secondary
         let matte = CIImage(color: .black).cropped(to: rect)
-        let split = Self.fit(host, to: left, fill: true).composited(over: Self.fit(secondary, to: right, fill: clip.secondaryFill).composited(over: matte))
+        let split = Self.fit(leftImage, to: left, fill: clip.swapSides == true ? clip.secondaryFill : true).composited(over: Self.fit(rightImage, to: right, fill: clip.swapSides == true ? true : clip.secondaryFill).composited(over: matte))
         return renderer.composePreparedCamera(split, at: time)
+    }
+    static func crop(_ image: CIImage, zoom: Double, x: Double, y: Double) -> CIImage {
+        let factor = min(3, max(1, zoom.isFinite ? zoom : 1)), extent = image.extent
+        let size = CGSize(width: extent.width / factor, height: extent.height / factor)
+        let origin = CGPoint(x: extent.midX - size.width / 2 + min(1, max(-1, x)) * (extent.width - size.width) / 2, y: extent.midY - size.height / 2 + min(1, max(-1, y)) * (extent.height - size.height) / 2)
+        return image.cropped(to: CGRect(origin: origin, size: size))
     }
     static func mirror(_ image: CIImage) -> CIImage { image.transformed(by: CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: image.extent.minX + image.extent.maxX, ty: 0)) }
     static func fit(_ image: CIImage, to rect: CGRect, fill: Bool) -> CIImage {
@@ -62,6 +78,9 @@ final class EditCompositionInstruction: NSObject, AVVideoCompositionInstructionP
     let containsTweening = true
     let passthroughTrackID = kCMPersistentTrackID_Invalid
     let requiredSourceTrackIDs: [NSValue]?
+    let shotRange: CMTimeRange
+    let animationOffset: Double
+    let signatureOut: Bool
     let primaryID: CMPersistentTrackID
     let secondaryID: CMPersistentTrackID?
     let animationID: CMPersistentTrackID?
@@ -73,8 +92,8 @@ final class EditCompositionInstruction: NSObject, AVVideoCompositionInstructionP
     let animationDuration: Double
     let fadeOutDuration: Double
     let newsOutDuration: Double
-    init(range: CMTimeRange, primary: CMPersistentTrackID, secondary: CMPersistentTrackID?, animation: CMPersistentTrackID?, primaryTransform: CGAffineTransform, secondaryTransform: CGAffineTransform, animationTransform: CGAffineTransform, still: CIImage?, shot: EditShotRenderer, animationDuration: Double, fadeOutDuration: Double, newsOutDuration: Double) {
-        timeRange = range; primaryID = primary; secondaryID = secondary; animationID = animation
+    init(range: CMTimeRange, shotRange: CMTimeRange, primary: CMPersistentTrackID, secondary: CMPersistentTrackID?, animation: CMPersistentTrackID?, primaryTransform: CGAffineTransform, secondaryTransform: CGAffineTransform, animationTransform: CGAffineTransform, still: CIImage?, shot: EditShotRenderer, animationDuration: Double, animationOffset: Double, fadeOutDuration: Double, newsOutDuration: Double, signatureOut: Bool) {
+        timeRange = range; self.shotRange = shotRange; self.animationOffset = animationOffset; self.signatureOut = signatureOut; primaryID = primary; secondaryID = secondary; animationID = animation
         requiredSourceTrackIDs = ([primary] + [secondary, animation].compactMap { $0 }).map { NSNumber(value: $0) }
         self.primaryTransform = primaryTransform; self.secondaryTransform = secondaryTransform; self.animationTransform = animationTransform
         self.still = still; self.shot = shot; self.animationDuration = animationDuration; self.fadeOutDuration = fadeOutDuration; self.newsOutDuration = newsOutDuration
@@ -99,16 +118,22 @@ final class EditVideoCompositor: NSObject, AVVideoCompositing, @unchecked Sendab
             let second = instruction.secondaryID.flatMap { request.sourceFrame(byTrackID: $0) }.map { CIImage(cvPixelBuffer: $0).transformed(by: instruction.secondaryTransform) } ?? instruction.still
             let time = request.compositionTime.seconds
             var frame = instruction.shot.frame(primary: main, secondary: second, at: time)
-            let local = time - instruction.timeRange.start.seconds
-            let length = instruction.timeRange.duration.seconds
+            let local = time - instruction.shotRange.start.seconds
+            let length = instruction.shotRange.duration.seconds
             let clip = instruction.shot.clip
+            if clip.transition == .signature, local < min(clip.transitionDuration / 2, length) {
+                frame = BroadcastTransition.frame(progress: 0.5 + local / max(1.0 / 30, min(clip.transitionDuration, length * 2))).composited(over: frame)
+            }
+            if instruction.signatureOut, instruction.newsOutDuration > 0, length - local < instruction.newsOutDuration {
+                frame = BroadcastTransition.frame(progress: 0.5 * (1 - (length - local) / instruction.newsOutDuration)).composited(over: frame)
+            }
             if let stinger = Self.newsArtwork {
                 let incomingLength = min(clip.transitionDuration / 2, length)
                 if clip.transition == .news, local < incomingLength {
                     frame = stinger.transformed(by: CGAffineTransform(translationX: local / max(1.0 / 30, incomingLength) * 1280, y: 0)).composited(over: frame)
                 }
                 let remaining = length - local
-                if instruction.newsOutDuration > 0, remaining < instruction.newsOutDuration {
+                if !instruction.signatureOut, instruction.newsOutDuration > 0, remaining < instruction.newsOutDuration {
                     let x = -1280 + (1 - remaining / instruction.newsOutDuration) * 1280
                     frame = stinger.transformed(by: CGAffineTransform(translationX: x, y: 0)).composited(over: frame)
                 }
@@ -117,12 +142,12 @@ final class EditVideoCompositor: NSObject, AVVideoCompositing, @unchecked Sendab
             if clip.transition == .fade { alpha = min(1, local / max(1.0 / 30, min(clip.transitionDuration / 2, length / 2))) }
             if instruction.fadeOutDuration > 0 { alpha = min(alpha, max(0, (length - local) / instruction.fadeOutDuration)) }
             if alpha < 1 { frame = frame.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: alpha)]).composited(over: CIImage(color: .black).cropped(to: CGRect(x: 0, y: 0, width: 1280, height: 720))) }
-            if local < instruction.animationDuration, let track = instruction.animationID, let pixel = request.sourceFrame(byTrackID: track) {
+            if local >= instruction.animationOffset, local < instruction.animationOffset + instruction.animationDuration, let track = instruction.animationID, let pixel = request.sourceFrame(byTrackID: track) {
                 let animation = CIImage(cvPixelBuffer: pixel).transformed(by: instruction.animationTransform)
                 // Aspect-fit preserves transparent padding and alpha in ProRes MOVs.
                 let extent = animation.extent, scale = min(1280 / extent.width, 720 / extent.height)
                 let fitted = animation.transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY)).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
-                frame = fitted.transformed(by: CGAffineTransform(translationX: 640 - fitted.extent.width / 2, y: 360 - fitted.extent.height / 2)).composited(over: frame)
+                frame = fitted.transformed(by: CGAffineTransform(translationX: 640 - fitted.extent.width / 2, y: 360 - fitted.extent.height / 2)).applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: min(1, max(0, clip.animationOpacity ?? 1)))]).composited(over: frame)
             }
             context.render(frame.cropped(to: CGRect(x: 0, y: 0, width: 1280, height: 720)), to: output, bounds: CGRect(x: 0, y: 0, width: 1280, height: 720), colorSpace: CGColorSpaceCreateDeviceRGB())
             lock.lock(); let canceledAfterRender = token != generation; lock.unlock()

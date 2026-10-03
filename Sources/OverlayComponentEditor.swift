@@ -26,7 +26,7 @@ struct OverlayComponentEditor: View {
                     }
                     Button("Reset text style") { model.editOverlay { $0.editStyle(selected) { $0.textScale = 1; $0.padding = 0; $0.alignment = .left } } }.controlSize(.small)
                 }
-                Text(selected.rule).font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
+                Text(model.overlay.template == .ticker && selected == .headlines ? "The current script heading scrolls upward beside the SVG brand. Edit the headings below or hide them to show the episode title." : selected.rule).font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
             }.font(.system(size: 11)).padding(17).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -64,6 +64,7 @@ struct OverlayComponentEditor: View {
             Text("Choose your camera in the studio device controls. Use the macOS camera menu for Apple video effects.").font(.system(size: 11)).foregroundStyle(.secondary)
         case .title:
             input("Episode title", value(\.title))
+            if model.overlay.template == .ticker { Text("Script headlines replace this title while Show headlines is enabled.").font(.system(size: 11)).foregroundStyle(.secondary) }
             HStack { Text("Base size"); Slider(value: value(\.titleSize), in: 24...70, step: 1); Text("\(Int(model.overlay.titleSize))").monospacedDigit() }
         case .presenter:
             Toggle("Show presenter", isOn: value(\.showPresenter)).toggleStyle(.checkbox)
@@ -89,9 +90,15 @@ struct OverlayComponentEditor: View {
             logo(program: true)
             logo(program: false)
         case .headlines:
+            if model.overlay.template == .glass {
+                Text("Frosted panels").font(.system(size: 12, weight: .medium))
+                HStack { Text("Blur"); Slider(value: Binding(get: { model.overlay.frostRadius ?? 22 }, set: { value in model.editOverlay { $0.frostRadius = value } }), in: 0...40) }
+                HStack { Text("Tint"); Slider(value: Binding(get: { model.overlay.frostOpacity ?? 0.55 }, set: { value in model.editOverlay { $0.frostOpacity = value } }), in: 0.15...0.9) }
+            }
+            if model.overlay.template == .ticker { Text("One headline scrolls upward as the script changes sections.").font(.system(size: 11)).foregroundStyle(.secondary) }
             Toggle("Show headlines", isOn: value(\.showHeadlines)).toggleStyle(.checkbox)
-            input("Panel heading", value(\.headlineHeading))
-            ColorPicker("Active card", selection: Binding(get: { Color(nsColor: NSColor(studioHex: model.overlay.accentHex)) }, set: { color in model.editOverlay { $0.accentHex = NSColor(color).studioHex } }), supportsOpacity: false)
+            if model.overlay.template != .ticker { input("Panel heading", value(\.headlineHeading)) }
+            ColorPicker(model.overlay.template == .ticker ? "Headline color" : "Active card", selection: Binding(get: { Color(nsColor: NSColor(studioHex: model.overlay.accentHex)) }, set: { color in model.editOverlay { $0.accentHex = NSColor(color).studioHex } }), supportsOpacity: false)
             ForEach(model.project.sections) { section in
                 input(section.id == model.section?.id ? "Current section" : "Headline", Binding(get: { model.project.sections.first(where: { $0.id == section.id })?.title ?? "" }, set: { title in if let index = model.project.sections.firstIndex(where: { $0.id == section.id }) { model.project.sections[index].title = title } }))
             }

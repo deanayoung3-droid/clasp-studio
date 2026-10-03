@@ -70,7 +70,10 @@ extension StudioTests {
             let playable = await MainActor.run { editor.player.currentItem?.status == .readyToPlay && editor.previewFailure == nil }
             check(playable, "The edited timeline becomes ready for native playback")
             await MainActor.run { editor.seek(0.15); editor.togglePlayback() }
-            try await Task.sleep(nanoseconds: 180_000_000)
+            for _ in 0..<100 {
+                if await MainActor.run(body: { editor.player.currentTime().seconds > 0.17 }) { break }
+                try await Task.sleep(nanoseconds: 25_000_000)
+            }
             let advanced = await MainActor.run { editor.player.currentTime().seconds > 0.17 }
             check(advanced, "Play advances the composed timeline from the scrubbed position")
             await MainActor.run { editor.player.pause(); editor.playing = false; editor.seek(0) }
@@ -120,6 +123,9 @@ extension StudioTests {
             try await alphaAnimation(at: alphaURL)
             let alpha = EditMedia(name: "Transparent transition.mov", fileName: "alpha.mov", kind: .animation, duration: 0.5)
             let alphaDoc = VideoEditDocument(name: "Alpha verification", broadcast: broadcast, media: [main, alpha], clips: [EditClip(mediaID: main.id, start: 0, end: min(0.6, mainLength), graphics: false, transition: .library, animationID: alpha.id)])
+            let alphaBuild = try await EditCompositionBuilder.build(alphaDoc, folder: alphaFolder)
+            let alphaValid = try await alphaBuild.video.isValid(for: alphaBuild.composition, timeRange: CMTimeRange(start: .zero, duration: alphaBuild.composition.duration), validationDelegate: nil)
+            check(alphaValid, "Animation instruction ranges form a valid complete video composition")
             let alphaSnapshot = alphaDoc
             let alphaEditor = await MainActor.run { VideoEditorModel(document: alphaSnapshot, folder: alphaFolder) }
             let alphaExport = directory.appendingPathComponent("alpha-broadcast.mp4"); try? FileManager.default.removeItem(at: alphaExport)
@@ -137,6 +143,7 @@ extension StudioTests {
                 check(NSBitmapImageRep(cgImage: afterAnimation).colorAt(x: 100, y: 360)!.greenComponent < 0.5, "The picture continues after a shorter animation ends")
             }
             await MainActor.run { alphaEditor.stop() }
+            try await advancedEditorChecks(main: main, alpha: alpha, broadcast: broadcast, folder: alphaFolder)
         } catch { check(false, "Timeline integration: \(error.localizedDescription)") }
     }
 }

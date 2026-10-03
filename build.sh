@@ -2,7 +2,9 @@
 set -euo pipefail
 ROOT=${0:A:h}
 BUILD="$ROOT/.build"
-DELIVERY="$ROOT/../Clasp Studio.app"
+DELIVERY_DIR="${CLASP_DELIVERY_DIR:-$ROOT/..}"
+mkdir -p "$DELIVERY_DIR"
+DELIVERY="$DELIVERY_DIR/Clasp Studio.app"
 APP_STAGE=$(mktemp -d /private/tmp/clasp-studio-build.XXXXXX)
 trap 'rm -rf "$APP_STAGE"' EXIT
 APP="$APP_STAGE/Clasp Studio.app"
@@ -29,7 +31,13 @@ xattr -cr "$APP"
 codesign --force --deep --sign - "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 ditto --norsrc --noextattr "$APP" "$DELIVERY"
-xattr -cr "$DELIVERY"
-codesign --verify --deep --strict --verbose=2 "$DELIVERY"
-ditto -c -k --norsrc --noextattr --keepParent "$APP" "$ROOT/../Clasp Studio Preview App.zip"
+# Finder may add icon metadata immediately after an app copy in Documents.
+# Verify the delivery after stripping it, with a bounded retry for that race.
+DELIVERY_VERIFIED=0
+for VERIFY_ATTEMPT in 1 2 3; do
+  xattr -cr "$DELIVERY"
+  if codesign --verify --deep --strict --verbose=2 "$DELIVERY"; then DELIVERY_VERIFIED=1; break; fi
+done
+[[ "$DELIVERY_VERIFIED" == 1 ]]
+ditto -c -k --norsrc --noextattr --keepParent "$APP" "$DELIVERY_DIR/Clasp Studio Preview App.zip"
 print "Built $DELIVERY and verified the app archive"

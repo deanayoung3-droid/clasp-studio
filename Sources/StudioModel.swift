@@ -134,6 +134,10 @@ enum PrompterMode: String, CaseIterable {
             if !project.overlayLibrary!.contains(where: { $0.template == .glass }), let glass = OverlayDocument.presets(project).first(where: { $0.template == .glass }) { project.overlayLibrary!.append(glass) }
             project.overlayLibraryRevision = 3
         }
+        if (project.overlayLibraryRevision ?? 3) < 4 {
+            if !project.overlayLibrary!.contains(where: { $0.template == .ticker }), let ticker = OverlayDocument.presets(project).first(where: { $0.template == .ticker }) { project.overlayLibrary!.append(ticker) }
+            project.overlayLibraryRevision = 4
+        }
         if !project.overlayLibrary!.contains(where: { $0.id == project.selectedOverlayID }) { project.selectedOverlayID = project.overlayLibrary!.first!.id }
         if project.sponsorItems == nil { project.sponsorItems = SponsorCatalog.migrated(project) }
         cachedWords = project.sections.map(\.words)
@@ -272,9 +276,13 @@ enum PrompterMode: String, CaseIterable {
     }
     func selectDevice() { pausePrompter(); if connected { connect() } }
     func disconnect() { guard !busy else { return }; pausePrompter(); engine.disconnect() }
+    private var lastGraphicsSection = 0
+    private var tickerPreviousSection: Int?
+    private var tickerChangeTime = -1_000_000.0
     func updateGraphics(at date: Date = Date()) {
         overlayMinute = Int(date.timeIntervalSince1970 / 60)
-        let settings = BroadcastGraphics.renderSettings(project, activeIndex: activeSection, at: date, epoch: animationEpoch)
+        if activeSection != lastGraphicsSection { tickerPreviousSection = lastGraphicsSection; lastGraphicsSection = activeSection; tickerChangeTime = ProcessInfo.processInfo.systemUptime }
+        let settings = BroadcastGraphics.renderSettings(project, activeIndex: activeSection, at: date, epoch: animationEpoch, previousSection: tickerPreviousSection, tickerEpoch: tickerChangeTime)
         updateDemo(settings)
         engine.update(settings)
     }

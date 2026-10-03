@@ -34,11 +34,18 @@ enum StudioTests {
         var project = StudioProject(); project.overlayLibrary = OverlayDocument.presets(project)
         if let index = CommandLine.arguments.firstIndex(of: "--template"), CommandLine.arguments.indices.contains(index + 1), let doc = project.overlayLibrary?.first(where: { $0.template.rawValue == CommandLine.arguments[index + 1] }) { project.selectedOverlayID = doc.id }
         let renderer = BroadcastFrameRenderer(BroadcastGraphics.renderSettings(project, activeIndex: 0, epoch: 0))
+        let tickerRenderer = BroadcastFrameRenderer(BroadcastGraphics.renderSettings(project, activeIndex: 1, epoch: 0, previousSection: 0, tickerEpoch: 2))
         let context = CIContext(), source = CIImage(cgImage: BroadcastGraphics.demoBackground!)
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, 42, nil) else { exit(1) }
         CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
         for i in 0..<42 { autoreleasepool {
-            let frame = renderer.compose(source, at: Double(i) / 10).transformed(by: CGAffineTransform(scaleX: 0.75, y: 0.75))
+            let time = Double(i) / 10
+            var program = (BroadcastGraphics.document(project).template == .ticker && i >= 20 ? tickerRenderer : renderer).compose(source, at: time)
+            if CommandLine.arguments.contains("--transition-preview") {
+                let background = CIImage(color: time < 2 ? CIColor(red: 0.18, green: 0.23, blue: 0.3) : CIColor(red: 0.34, green: 0.29, blue: 0.24)).cropped(to: CGRect(x: 0, y: 0, width: 1280, height: 720))
+                program = BroadcastTransition.frame(progress: (time - 1.6) / 0.8).composited(over: background)
+            }
+            let frame = program.transformed(by: CGAffineTransform(scaleX: 0.75, y: 0.75))
             if let image = context.createCGImage(frame, from: CGRect(x: 0, y: 0, width: 960, height: 540)) {
                 CGImageDestinationAddImage(destination, image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 0.1]] as CFDictionary)
             }
@@ -376,7 +383,7 @@ enum StudioTests {
             check(!document.zone(.live).intersects(document.zone(.presentedBy)), "\(document.name) prevents badge collisions")
             document.editStyle(.title) { $0.textScale = 9; $0.padding = -20; $0.alignment = .right }
             check(document.style(.title).safeScale == 1.25 && document.style(.title).safePadding == 0, "\(document.name) clamps typography to safe bounds")
-            check(document.textZone(.title).width > 0 && (document.template == .glass ? document.zone(.title).maxY <= 211 : document.zone(.title).maxY < document.zone(.camera).minY), "\(document.name) protects the camera from title edits")
+            check(document.textZone(.title).width > 0 && ([OverlayTemplate.glass, .ticker].contains(document.template) ? document.zone(.title).maxY <= 211 : document.zone(.title).maxY < document.zone(.camera).minY), "\(document.name) protects the camera from title edits")
             let saved = try! JSONDecoder().decode(OverlayDocument.self, from: JSONEncoder().encode(document))
             check(saved.componentStyles == document.componentStyles && saved.zone(.live) == document.zone(.live), "\(document.name) persists component edits")
         }
@@ -405,7 +412,7 @@ enum StudioTests {
         check(pixels(pulse.frame(at: 0.4)!, rect: dot.extent, context: context) == pixels(pulse.frame(at: 1.2)!, rect: dot.extent, context: context), "Disabling LIVE pulse holds the indicator steady")
         await MainActor.run {
             let model = StudioModel(persist: false)
-            check(model.project.overlayLibrary?.count == 5, "The library includes all five supplied designs")
+            check(model.project.overlayLibrary?.count == 6, "The library includes all six supplied designs")
             let original = model.overlay.id, next = model.project.overlayLibrary![1].id
             model.editOverlay { $0.title = "A custom episode"; $0.date = Date(timeIntervalSince1970: 1_800_000_000); $0.liveLabel = "ON AIR" }
             let edited = model.overlay
@@ -415,7 +422,7 @@ enum StudioTests {
             model.editOverlay { $0.title = "Copy only" }; model.selectOverlay(original)
             check(model.overlay.title == edited.title && copy != original, "Duplicated overlays have independent editable settings")
             model.removeOverlay(copy)
-            check(model.project.overlayLibrary?.count == 5, "Removing an overlay keeps the rest of the library")
+            check(model.project.overlayLibrary?.count == 6, "Removing an overlay keeps the rest of the library")
             let sponsor = model.sponsors[0].id
             model.renameSponsor(sponsor, name: "Edited sponsor")
             check(model.sponsors[0].showName && model.sponsors[0].name == "Edited sponsor", "Renaming a bundled sponsor displays the new name with its icon")

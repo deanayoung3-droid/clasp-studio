@@ -24,7 +24,7 @@ Clasp Studio combines a live camera, your selected microphone, a script-followin
 | --- | --- |
 | Live capture | Select a built-in, external, or available Continuity Camera, with an independent microphone. |
 | Teleprompter | Import or paste a script, use on-device English voice following, or choose timed reading pace. |
-| Overlay library | Switch between five supplied designs, duplicate them, and preserve each design’s edits. |
+| Overlay library | Switch between six supplied designs, duplicate them, and preserve each design’s edits. |
 | Component editor | Select regions on the canvas; edit each component within the design’s protected layout rules. |
 | Branding | Change titles, episode dates, presenter text, headline cards, colors, program logos, and brand logos. |
 | Sponsor carousel | Edit up to twelve names and logos, reorder or hide sponsors, and set continuous scroll speed. |
@@ -38,7 +38,7 @@ Clasp Studio combines a live camera, your selected microphone, a script-followin
 | Saved-file popup | Choose **Show in Finder** to open the recording folder and select the finished file. |
 | GitHub updates | Receive verified releases generated automatically by pushes to `main`. |
 
-## Five designs, one library
+## Six designs, one library
 
 <table>
   <tr><th>Law · Classic</th><th>AI · Editorial</th><th>AI · Blue</th></tr>
@@ -55,9 +55,19 @@ The library also includes **AI · Graphite**, based on the gray and black broadc
 
 Its textured brand tile, dark lower third and purple LIVE indicator are native components; the supplied photograph is replaced by the live camera.
 
-**Law · Glass** adds the new full-frame camera design with floating translucent panels, a lower third and a monochrome sponsor strip. Its flattened reference is reconstructed as editable native components; the reference photograph is never included.
+**Law · Glass** adds the new full-frame camera design with floating frosted panels with real, masked backdrop blur, a lower third and a monochrome sponsor strip. Its flattened reference is reconstructed as editable native components; the reference photograph is never included.
 
 ![Law Glass full-frame broadcast design](docs/media/law-glass.png)
+
+**Law · Ticker** preserves the new SVG’s outlined Clasp Legal News Network brand and gradient. One headline sits beside the brand and scrolls upward when the script changes sections. There is no sidebar.
+
+![Law Ticker broadcast design](docs/media/law-ticker.png)
+
+<details><summary>Watch the headline change</summary>
+
+![Upward scrolling headline ticker](docs/media/ticker.gif)
+
+</details>
 
 Open **Overlays**, then click a region on the canvas or choose it in **Layers**. Choose another template in **Designs**. The inspector edits the selected region’s text, visibility, logos or typography. Camera openings, text boundaries and logo proportions are protected. LIVE and presented-by badges can switch sides without colliding. Headlines follow your script sections.
 
@@ -113,6 +123,10 @@ The left **Layers** list groups video, picture, overlay, transition and audio un
 Each timeline clip can show the **Presenter**, a replacement **Image / video**, or a **Split screen** with a supporting image or guest video. Turn **Show topics sidebar** off for a wider picture, or turn **Show overlay** off for a clean full-frame view. Supporting images fit without cropping by default; **Fill and crop** switches to a cover crop. Short supporting videos loop to fill their selected clip. **Use supporting audio** mixes the second video’s sound with the original source.
 
 For a speaker change, split at the cut and select the incoming clip. Choose **News wipe**, **Fade through black**, or **Library animation**. The animation library supports multiple-file import, renaming and removal. Transparent ProRes MOVs composite over the program; opaque videos cover it. Animation audio mixes automatically and ducks presenter audio while the stinger plays. Animation files used in a draft are independent copies, so removing a library item does not break existing edits.
+
+Frame stepping, shot duplication, 0.25×–4× speed, zoom and crop positioning are available in the Video inspector. Picture controls add adjustable split positions, swapped sides and picture-in-picture. Animation controls set source in point, timeline offset, duration, opacity and volume; the animation’s timeline bar shows its actual length and can be dragged to move it within the shot. **Clasp reveal** is the built-in branded panel transition.
+
+![Custom Clasp reveal transition](docs/media/reveal.gif) Scrubbing displays a composed still while paused.
 
 Drafts autosave. Undo/redo keeps up to fifty edit states. Export and cancel operate on a temporary movie; the original media and draft remain intact. Graphics already burned into an imported video remain part of that source picture.
 
