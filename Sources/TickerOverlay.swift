@@ -28,6 +28,14 @@ struct HeadlineTicker: @unchecked Sendable {
     }
 }
 extension BroadcastGraphics {
+    static let tickerFrostMask: CGImage? = image { ctx in
+        let top = 720 - 1265 * 720 / 1677.0
+        let colors = [NSColor.white.withAlphaComponent(0).cgColor, NSColor.white.cgColor, NSColor.white.cgColor] as CFArray
+        if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 0.22, 1]) {
+            ctx.saveGState(); ctx.clip(to: CGRect(x: 0, y: 0, width: 1280, height: top))
+            ctx.drawLinearGradient(gradient, start: CGPoint(x: 0, y: top), end: .zero, options: []); ctx.restoreGState()
+        }
+    }
     static let legalNetworkBrand: CGImage? = Bundle.main.url(forResource: "LegalNetworkBrand", withExtension: "png").flatMap { NSImage(contentsOf: $0)?.studioCGImage }
     static func networkBrand(_ ctx: CGContext, project: StudioProject, doc: OverlayDocument, in rect: CGRect) {
         if let custom = doc.programLogoData.flatMap({ NSImage(data: $0)?.studioCGImage }) { drawLogo(ctx, custom, in: rect); return }

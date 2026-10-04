@@ -84,6 +84,8 @@ enum PrompterMode: String, CaseIterable {
     private var recordedProject: StudioProject?
     private var recordCues: [RecordedSectionCue] = []
     private var recordReferences: [RecordedReferenceCue] = []
+    private enum TakeAction { case edit, discard, retake }
+    private var takeAction = TakeAction.edit
     @Published var editorOpen = false
     @Published var editorText = ""
     @Published var settingsOpen = false
@@ -95,7 +97,7 @@ enum PrompterMode: String, CaseIterable {
     var outputAspectRatio: CGFloat { outputRect.width / outputRect.height }
     var outputDimensions: String { "\(Int(outputRect.width)) × \(Int(outputRect.height))" }
     var sponsors: [SponsorItem] { SponsorCatalog.migrated(project) }
-    @Published var prompterSize = 22.0
+    @Published var prompterSize = 34.0
     let updater = AppUpdater()
     let engine = CaptureEngine()
     private var timer: Timer?
@@ -198,6 +200,17 @@ enum PrompterMode: String, CaseIterable {
         engine.onRecordingFinished = { [weak self] url, error in DispatchQueue.main.async {
             guard let self else { return }
             self.frameDeadline?.invalidate(); self.recording = false; self.preparingRecording = false; self.finishingRecording = false; self.recordStarted = nil; self.recordingFocus = false; self.pausePrompter()
+            let action = self.takeAction; self.takeAction = .edit
+            if action != .edit {
+                do {
+                    if let folder = self.recordingDraft { try EditStorage.trashDraft(folder) }
+                    self.recordingDraft = nil; self.recordedProject = nil; self.recordCues = []; self.recordReferences = []; self.recordElapsed = 0
+                    self.notice = "Take moved to Trash. You can restore it in Finder."
+                    self.restart()
+                    if action == .retake { self.startRecording() }
+                } catch { self.alert = "The take was kept because it could not be moved to Trash: " + error.localizedDescription }
+                return
+            }
             if let error { self.alert = error; self.notice = "Recording could not be saved."; self.log(error) }
             else if let url {
                 self.notice = "Take captured · opening the editor…"; self.log("Draft recording finalized successfully")
@@ -530,6 +543,7 @@ enum PrompterMode: String, CaseIterable {
     }
     func startRecording() {
         guard !busy else { return }
+        takeAction = .edit
         // Focus and feedback change on the click, even before permissions or the
         // first camera frame. Never leave the user wondering whether it worked.
         recordingFocus = true; preparingRecording = true; recordElapsed = 0
@@ -573,6 +587,25 @@ enum PrompterMode: String, CaseIterable {
         }
         finishingRecording = true; recording = false; preparingRecording = false
         log("Finalizing recording"); engine.stopRecording()
+    }
+    func discardRecording(retake: Bool = false) {
+        guard !finishingRecording, recording || preparingRecording || pendingRecordingStart else { return }
+        if pendingRecordingStart {
+            stopRecording(); restart()
+            if retake { startRecording() }
+            return
+        }
+        takeAction = retake ? .retake : .discard; stopRecording()
+        notice = retake ? "Preparing a fresh take…" : "Discarding take…"
+    }
+    func discardDraft(retake: Bool = false) {
+        guard let editor = videoEditor, !editor.isExporting, !editor.importing else { return }
+        editor.saveNow()
+        do {
+            try EditStorage.trashDraft(editor.folder); editor.stop(); videoEditor = nil; recordingSavedOpen = false
+            restart(); notice = "Draft moved to Trash. Exported videos and original imports are kept."
+            if retake { startRecording() }
+        } catch { editor.error = "The draft was kept because it could not be moved to Trash: " + error.localizedDescription }
     }
     private func configureEditor(_ editor: VideoEditorModel) {
         pausePrompter(); engine.disconnect(); connected = false

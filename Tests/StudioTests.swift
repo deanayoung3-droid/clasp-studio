@@ -284,6 +284,7 @@ enum StudioTests {
         await MainActor.run {
             check(!failedFlow.busy && !failedFlow.recordingFocus && !failedFlow.recordingSavedOpen && failedFlow.alert != nil, "A no-frame recording failure returns to the studio instead of getting stuck")
         }
+        await recordingRetakeChecks()
         await MainActor.run {
             let model = StudioModel(persist: false)
             model.connecting = true // Simulate an already pending device connection without OS prompts.

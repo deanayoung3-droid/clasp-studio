@@ -93,10 +93,10 @@ struct OverlayComponentEditor: View {
             logo(program: true)
             logo(program: false)
         case .headlines:
-            if model.overlay.template == .glass {
+            if model.overlay.template == .glass || model.overlay.template == .ticker {
                 Text("Frosted panels").font(.system(size: 12, weight: .medium))
-                HStack { Text("Blur"); Slider(value: Binding(get: { model.overlay.frostRadius ?? 22 }, set: { value in model.editOverlay { $0.frostRadius = value } }), in: 0...40) }
-                HStack { Text("Tint"); Slider(value: Binding(get: { model.overlay.frostOpacity ?? 0.55 }, set: { value in model.editOverlay { $0.frostOpacity = value } }), in: 0.15...0.9) }
+                HStack { Text("Blur"); Slider(value: Binding(get: { model.overlay.frostRadius ?? (model.overlay.template == .ticker ? 40 : 22) }, set: { value in model.editOverlay { $0.frostRadius = value } }), in: 0...60) }
+                if model.overlay.template == .glass { HStack { Text("Tint"); Slider(value: Binding(get: { model.overlay.frostOpacity ?? 0.55 }, set: { value in model.editOverlay { $0.frostOpacity = value } }), in: 0.15...0.9) } }
             }
             if model.overlay.template == .ticker { Text("One headline scrolls upward as the script changes sections.").font(.system(size: 11)).foregroundStyle(.secondary) }
             Toggle("Show headlines", isOn: value(\.showHeadlines)).toggleStyle(.checkbox)

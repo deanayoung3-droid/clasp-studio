@@ -16,7 +16,7 @@
 
 ![Clasp Studio with the overlay preview and teleprompter](docs/media/studio.png)
 
-Clasp Studio combines a live camera, your selected microphone, a script-following teleprompter, and editable broadcast graphics in one Mac app. Start recording to focus on the preview and your script. Stop to edit your take on a timeline, then export and jump directly to the finished movie in Finder.
+Clasp Studio combines a live camera, your selected microphone, a script-following teleprompter, and editable broadcast graphics in one Mac app. Read large script text at the top of the screen, with a smaller preview below. Start recording to focus on your script, then use **Retake** or **Discard** whenever you need another take. Stop to edit your take on a timeline, then export and jump directly to the finished movie in Finder.
 
 ## Built for a complete take
 
@@ -41,7 +41,7 @@ Clasp Studio combines a live camera, your selected microphone, a script-followin
 
 ## Import your own SVG
 
-Choose **Overlays → Import SVG**, or **Import SVG overlay…** in the video editor. The file becomes a reusable design immediately, preserving its shapes, outlined lettering, logos and transparent gradients. Its large embedded photos are replaced by the camera by default; smaller logos stay in the artwork.
+Choose **Overlays → Import SVG**, or **Import SVG overlay…** in the video editor. The file becomes a reusable design immediately, preserving its shapes, outlined lettering, logos and transparent gradients. Its large embedded photos are replaced by the camera by default; smaller logos stay in the artwork. Translucent artwork receives a frosted backdrop, with **Backdrop blur** adjustable in the SVG inspector; text, logos and the transparent camera area stay sharp.
 
 SVG artwork keeps its original proportions. **Fit** shows the entire design; **Fill** crops the edges to cover 16:9. Neither stretches the artwork. Previously saved SVG imports are corrected automatically.
 

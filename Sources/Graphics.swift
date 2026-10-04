@@ -9,6 +9,7 @@ struct RenderSettings: @unchecked Sendable {
     var animation: BroadcastAnimation?
     var frostMask: CGImage?
     var frostRadius: Double = 0
+    var frostMaskGain: Double = 1
     var referenceCard: CGImage?
     var outputRect = CGRect(x: 0, y: 0, width: 1280, height: 720)
 }
@@ -106,8 +107,8 @@ enum BroadcastGraphics {
             let previous = previousSection.flatMap { project.sections.indices.contains($0) ? project.sections[$0].title : nil }
             animation.headlineTicker = HeadlineTicker(current: current, previous: previous, zone: doc.textZone(.headlines), style: doc.style(.headlines), epoch: tickerEpoch ?? -1_000_000, color: NSColor(studioHex: doc.accentHex))
         }
-        let frost = template == .glass ? glassFrostMask(doc) : nil
-        return RenderSettings(overlay: baseOverlay(project, doc: doc, activeIndex: activeIndex, at: date), mirror: project.mirror, cameraRect: rect, cameraMask: mask, animation: animation, frostMask: frost, frostRadius: template == .glass ? min(40, max(0, doc.frostRadius ?? 22)) : 0, referenceCard: ReferenceCardGraphics.artwork(project, camera: rect), outputRect: outputRect(project))
+        let frost = template == .glass ? glassFrostMask(doc) : template == .ticker ? tickerFrostMask : nil
+        return RenderSettings(overlay: baseOverlay(project, doc: doc, activeIndex: activeIndex, at: date), mirror: project.mirror, cameraRect: rect, cameraMask: mask, animation: animation, frostMask: frost, frostRadius: frost == nil ? 0 : min(60, max(0, doc.frostRadius ?? (template == .ticker ? 40 : 22))), referenceCard: ReferenceCardGraphics.artwork(project, camera: rect), outputRect: outputRect(project))
     }
     static func overlay(_ project: StudioProject, section: String, activeIndex: Int? = nil, at date: Date = Date()) -> CGImage? {
         let settings = renderSettings(project, activeIndex: activeIndex ?? project.sections.firstIndex(where: { $0.title == section }) ?? 0, at: date)

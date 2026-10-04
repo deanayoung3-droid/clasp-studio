@@ -105,6 +105,10 @@ struct VideoEditDocument: Codable {
     }
 }
 enum EditStorage {
+    static func trashDraft(_ folder: URL) throws {
+        guard FileManager.default.fileExists(atPath: folder.path) else { return }
+        try FileManager.default.trashItem(at: folder, resultingItemURL: nil)
+    }
     static var root: URL { FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("ClaspStudio") }
     static var drafts: URL { root.appendingPathComponent("Drafts") }
     static var animations: URL { root.appendingPathComponent("Animations") }

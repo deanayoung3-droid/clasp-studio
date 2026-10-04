@@ -27,8 +27,27 @@ struct StudioView: View {
                     branding.frame(width: 222).transition(.move(edge: .leading).combined(with: .opacity))
                     Rectangle().fill(edge).frame(width: 1)
                 }
-                center.frame(maxWidth: .infinity, maxHeight: .infinity)
-                script.frame(width: model.recordingFocus ? 420 : 336)
+                if prompterAtTop {
+                    GeometryReader { geometry in
+                        VStack(spacing: 14) {
+                            topPrompter.frame(height: geometry.size.height * 0.60)
+                            HStack(spacing: 20) {
+                                cameraFrame.frame(maxWidth: 640, maxHeight: .infinity)
+                                if !model.recordingFocus {
+                                    VStack(alignment: .leading, spacing: 15) {
+                                        Text("Preview").font(.system(size: 13, weight: .medium))
+                                        HStack { referenceButton; Spacer(); Toggle("Overlay", isOn: $model.project.graphics).toggleStyle(.switch).controlSize(.mini) }
+                                        deviceBar
+                                        Button { model.openAppleEffects() } label: { Label("Apple backgrounds & effects", systemImage: "sparkles") }.buttonStyle(.plain).foregroundStyle(muted).disabled(!model.connected)
+                                    }.font(.system(size: 11)).frame(maxWidth: 380)
+                                }
+                            }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
+                    }
+                } else {
+                    center.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    script.frame(width: 336)
+                }
             }.padding(model.recordingFocus ? 18 : 24)
             if !model.recordingFocus { footer }
         }.background(ink).foregroundStyle(.white).preferredColorScheme(.dark).tint(accent)
@@ -61,6 +80,10 @@ struct StudioView: View {
             Text(model.overlay.title).font(.system(size: 11, weight: .medium)).foregroundStyle(muted).lineLimit(1)
             Spacer()
             Button { model.importVideo() } label: { Label("Import video", systemImage: "film.stack").font(.system(size: 11, weight: .medium)) }.buttonStyle(StudioButton()).disabled(model.busy)
+            if model.recording || model.preparingRecording {
+                Button("Discard") { model.discardRecording() }.buttonStyle(StudioButton()).disabled(model.finishingRecording)
+                Button("Retake") { model.discardRecording(retake: true) }.buttonStyle(StudioButton()).disabled(model.finishingRecording)
+            }
             Button { model.draftsOpen = true } label: { Text("Drafts").font(.system(size: 11, weight: .medium)) }.buttonStyle(StudioButton()).disabled(model.busy)
             Button { model.editOverlays() } label: { Label("Overlays", systemImage: "square.stack").font(.system(size: 11, weight: .medium)) }.buttonStyle(StudioButton())
             Button { customize() } label: { Label("Customize", systemImage: "slider.horizontal.3").font(.system(size: 11, weight: .medium)) }.buttonStyle(StudioButton()).help("Edit your broadcast headline, presenter and sponsors")
@@ -82,6 +105,8 @@ struct StudioView: View {
             else { Text(model.connecting ? "Allow camera and microphone access if prompted" : model.preparingRecording ? "Waiting for the first camera frame…" : "Finishing your movie…").font(.system(size: 10)).foregroundStyle(muted) }
             Spacer()
             referenceButton
+            Button { model.discardRecording() } label: { Label("Discard", systemImage: "trash") }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(muted).disabled(model.finishingRecording).help("Move this take to Trash")
+            Button { model.discardRecording(retake: true) } label: { Label("Retake", systemImage: "arrow.counterclockwise") }.buttonStyle(StudioButton()).disabled(model.finishingRecording).help("Discard this take and record again from the beginning")
             Button("Exit focus") { model.recordingFocus = false }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(muted)
             Button { model.stopRecording() } label: { Label(model.openingVideoEditor ? "Opening editor…" : model.finishingRecording ? "Preparing edit…" : model.preparingRecording ? "Cancel" : "Stop recording", systemImage: "stop.fill").font(.system(size: 12, weight: .semibold)) }.buttonStyle(StudioButton(primary: true)).disabled(model.finishingRecording)
         }.padding(.horizontal, 26).frame(height: 54)
@@ -108,7 +133,20 @@ struct StudioView: View {
                 Spacer()
                 Text(model.outputDimensions).font(.system(size: 9, weight: .medium)).foregroundStyle(muted)
             } }
-            if model.recordingFocus { Spacer(minLength: 0) }
+            cameraFrame
+            if !model.recordingFocus { HStack(spacing: 16) {
+                referenceButton
+                Button { model.openAppleEffects() } label: { Label(model.nativeBackgroundActive ? "Apple background active" : "Apple backgrounds & effects", systemImage: "sparkles").font(.system(size: 11)) }.buttonStyle(.plain).foregroundStyle(muted).disabled(!model.connected).help("Open macOS native video effects and backgrounds")
+                Button { model.editOverlays("Sponsors") } label: { Label("Edit sponsors", systemImage: "arrow.triangle.2.circlepath").font(.system(size: 11)) }.buttonStyle(.plain).foregroundStyle(muted)
+                Spacer()
+                Toggle("Show overlay", isOn: $model.project.graphics).toggleStyle(.switch).controlSize(.mini).font(.system(size: 11))
+                Button { model.snapshot() } label: { Label("Save frame", systemImage: "camera").font(.system(size: 11)) }.buttonStyle(.plain).foregroundStyle(muted).help("Save the current preview as an image")
+            }.frame(height: 24)
+            deviceBar }
+            Spacer(minLength: 0)
+        }
+    }
+    private var cameraFrame: some View {
             ZStack {
                 if model.connected || model.allowsWindowChanges { CameraPreviewView(surface: model.previewSurface) }
                 else if let image = model.demoImage { Image(nsImage: image).resizable().aspectRatio(model.outputAspectRatio, contentMode: .fit) }
@@ -125,17 +163,6 @@ struct StudioView: View {
                     }
                 }
             }.aspectRatio(model.outputAspectRatio, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 8)).overlay(RoundedRectangle(cornerRadius: 8).stroke(edge))
-            if !model.recordingFocus { HStack(spacing: 16) {
-                referenceButton
-                Button { model.openAppleEffects() } label: { Label(model.nativeBackgroundActive ? "Apple background active" : "Apple backgrounds & effects", systemImage: "sparkles").font(.system(size: 11)) }.buttonStyle(.plain).foregroundStyle(muted).disabled(!model.connected).help("Open macOS native video effects and backgrounds")
-                Button { model.editOverlays("Sponsors") } label: { Label("Edit sponsors", systemImage: "arrow.triangle.2.circlepath").font(.system(size: 11)) }.buttonStyle(.plain).foregroundStyle(muted)
-                Spacer()
-                Toggle("Show overlay", isOn: $model.project.graphics).toggleStyle(.switch).controlSize(.mini).font(.system(size: 11))
-                Button { model.snapshot() } label: { Label("Save frame", systemImage: "camera").font(.system(size: 11)) }.buttonStyle(.plain).foregroundStyle(muted).help("Save the current preview as an image")
-            }.frame(height: 24)
-            deviceBar }
-            Spacer(minLength: 0)
-        }
     }
     private var referenceButton: some View {
         Button { referenceOpen.toggle() } label: {
@@ -151,12 +178,52 @@ struct StudioView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             Rectangle().fill(edge).frame(width: 1, height: 36)
             VStack(alignment: .leading, spacing: 8) {
-                HStack { Label("Microphone", systemImage: "mic").font(.system(size: 10, weight: .medium)).foregroundStyle(muted); Spacer(); MicrophoneMeter(meter: model.audioMeter) }
+                HStack { Label(prompterAtTop ? "Mic" : "Microphone", systemImage: "mic").font(.system(size: 10, weight: .medium)).fixedSize(horizontal: true, vertical: false).foregroundStyle(muted); Spacer(); MicrophoneMeter(meter: model.audioMeter) }
                 Picker("Microphone", selection: $model.microphoneID) { Text("No microphone").tag("none"); ForEach(model.microphones, id: \.uniqueID) { Text($0.localizedName).tag($0.uniqueID) } }.labelsHidden().disabled(model.busy).onChange(of: model.microphoneID) { _, _ in model.selectDevice() }
             }.frame(maxWidth: .infinity, alignment: .leading)
             Button { model.refreshDevices() } label: { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(.plain).foregroundStyle(muted).disabled(model.busy).help("Refresh camera and microphone list").accessibilityLabel("Refresh devices")
             if model.connected { Button("Disconnect") { model.disconnect() }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(muted).disabled(model.busy) }
         }.pickerStyle(.menu).font(.system(size: 11)).padding(16).background(panel).clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+    private var prompterAtTop: Bool { model.recordingFocus || scriptTab == "Teleprompter" }
+    private var promptText: some View {
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 14) {
+                            Text(model.section?.title.uppercased() ?? "").font(.system(size: 9, weight: .semibold)).tracking(0.8).foregroundStyle(muted)
+                            ForEach(0..<max(1, (model.sectionWords.count + 7) / 8), id: \.self) { line in Text(promptLine(line)).font(.system(size: prompterAtTop ? max(34, model.prompterSize) : model.prompterSize, weight: .medium)).lineSpacing(8).fixedSize(horizontal: false, vertical: true).id(line) }
+                            Color.clear.frame(height: 100)
+                        }.padding(.horizontal, 4)
+                    }.onChange(of: model.currentWord / 8) { _, line in if model.prompterRunning { withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(line, anchor: prompterAtTop ? .top : .center) } } }.onChange(of: model.activeSection) { _, _ in proxy.scrollTo(model.currentWord / 8, anchor: prompterAtTop ? .top : .center) }.onAppear { proxy.scrollTo(model.currentWord / 8, anchor: prompterAtTop ? .top : .center) }
+                }
+    }
+    private var topPrompter: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 14) {
+                Text("Teleprompter").font(.system(size: 13, weight: .semibold))
+                Text("\(model.activeSection + 1) / \(model.project.sections.count)").font(.system(size: 10, design: .monospaced)).foregroundStyle(muted)
+                Spacer()
+                if !model.recordingFocus {
+                    Button("Import script") { model.importScript() }.buttonStyle(.plain)
+                    Button("Edit / paste") { model.editScript() }.buttonStyle(.plain)
+                    Button("Sections") { scriptTab = "Sections" }.buttonStyle(.plain)
+                }
+                Image(systemName: "textformat.size").foregroundStyle(muted)
+                Slider(value: $model.prompterSize, in: 34...52).frame(width: 100).help("Teleprompter text size")
+            }.font(.system(size: 11))
+            promptText.frame(maxWidth: 1000, maxHeight: .infinity, alignment: .topLeading).frame(maxWidth: .infinity)
+            ProgressView(value: model.progress).tint(.white).frame(height: 2)
+            HStack(spacing: 16) {
+                Button { model.previous() } label: { Image(systemName: "backward.end.fill") }.help("Previous section")
+                Button { model.togglePrompter() } label: { Label(model.prompterRunning ? "Pause" : model.prompterMode == .voice ? "Follow my voice" : "Read script", systemImage: model.prompterRunning ? "pause.fill" : model.prompterMode == .voice ? "mic.fill" : "play.fill") }.buttonStyle(StudioButton(primary: true))
+                Button { model.next() } label: { Image(systemName: "forward.end.fill") }.disabled(model.activeSection + 1 >= model.project.sections.count).help("Next section")
+                Picker("Scroll mode", selection: $model.prompterMode) { ForEach(PrompterMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.segmented).frame(width: 250).labelsHidden()
+                if model.prompterMode == .voice { Text(model.voiceStatus).foregroundStyle(muted).lineLimit(1) }
+                else { Slider(value: $model.project.wordsPerMinute, in: 80...220, step: 5).frame(width: 110); Text("\(Int(model.project.wordsPerMinute)) wpm").foregroundStyle(muted) }
+                Spacer(minLength: 0)
+                Button("Reset script") { model.restart() }.foregroundStyle(muted)
+            }.buttonStyle(.plain).font(.system(size: 11))
+        }.padding(18).background(panel).clipShape(RoundedRectangle(cornerRadius: 10))
     }
     var script: some View {
         VStack(alignment: .leading, spacing: 17) {
@@ -189,15 +256,7 @@ struct StudioView: View {
                     }.onChange(of: model.activeSection) { _, _ in if let id = model.section?.id { withAnimation { proxy.scrollTo(id, anchor: .top) } } }
                 }
             } else {
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 14) {
-                            Text(model.section?.title.uppercased() ?? "").font(.system(size: 9, weight: .semibold)).tracking(0.8).foregroundStyle(muted)
-                            ForEach(0..<max(1, (model.sectionWords.count + 7) / 8), id: \.self) { line in Text(promptLine(line)).font(.system(size: model.recordingFocus ? max(28, model.prompterSize) : model.prompterSize, weight: .medium)).lineSpacing(8).fixedSize(horizontal: false, vertical: true).id(line) }
-                            Color.clear.frame(height: 100)
-                        }.padding(.horizontal, 4)
-                    }.onChange(of: model.currentWord / 8) { _, line in if model.prompterRunning { withAnimation(.easeInOut(duration: 0.4)) { proxy.scrollTo(line, anchor: .center) } } }.onChange(of: model.activeSection) { _, _ in proxy.scrollTo(model.currentWord / 8, anchor: .center) }.onAppear { proxy.scrollTo(model.currentWord / 8, anchor: .center) }
-                }
+                promptText
                 if !model.recordingFocus { HStack { Image(systemName: "textformat.size").foregroundStyle(muted); Slider(value: $model.prompterSize, in: 16...34).help("Prompter text size") } }
             }
             Spacer(minLength: 0)

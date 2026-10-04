@@ -65,6 +65,15 @@ extension StudioTests {
         let inside = frostedPixels.colorAt(x: 200, y: 520)!.redComponent
         let outside = frostedPixels.colorAt(x: 700, y: 520)!.redComponent
         check(inside > 0.25 && inside < 0.75 && (outside < 0.1 || outside > 0.9), "Frosted overlay panels blur their backdrop while the camera remains sharp elsewhere")
+        let svgMask = BroadcastGraphics.image { ctx in BroadcastGraphics.fill(ctx, CGRect(x: 0, y: 0, width: 1280, height: 170), NSColor.black.withAlphaComponent(0.18)) }!
+        var svgDocument = OverlayDocument.presets(broadcast)[0]; svgDocument.template = .custom
+        svgDocument.importedSVG = ImportedSVGOverlay(source: Data(), png: NSBitmapImageRep(cgImage: svgMask).representation(using: .png, properties: [:])!, camera: SVGCameraWindow(), fit: .fit)
+        var svgFrost = ImportedSVGGraphics.settings(svgDocument, mirror: false); svgFrost.overlay = nil
+        let svgPixels = NSBitmapImageRep(cgImage: context.createCGImage(BroadcastFrameRenderer(svgFrost).compose(checker), from: bounds)!)
+        let lower = svgPixels.colorAt(x: 500, y: 620)!.redComponent, upper = svgPixels.colorAt(x: 500, y: 200)!.redComponent
+        check(lower > 0.25 && lower < 0.75 && (upper < 0.1 || upper > 0.9), "Imported SVG gradients blur their backdrop strongly while the transparent camera area stays sharp")
+        svgDocument.frostRadius = 0
+        check(ImportedSVGGraphics.settings(svgDocument, mirror: false).frostRadius == 0, "Imported overlay backdrop blur can be disabled without changing its artwork")
         try await svgOverlayChecks()
         try await referenceImageChecks(main: main, folder: folder)
         try await singleLaneEditorChecks(main: main, folder: folder)

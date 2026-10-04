@@ -187,6 +187,8 @@ enum ImportedSVGGraphics {
             if doc.cutCameraWindow == true { ctx.setBlendMode(.clear); BroadcastGraphics.rounded(ctx, rect, camera.safeRadius, .clear) }
         }
         let mask = BroadcastGraphics.image { ctx in BroadcastGraphics.rounded(ctx, rect, camera.safeRadius, .white) }
-        return RenderSettings(overlay: overlay, mirror: mirror, cameraRect: rect, cameraMask: mask)
+        // Blur follows the SVG's alpha: clear camera pixels stay sharp, while
+        // translucent gradients receive a stronger frost beneath their artwork.
+        return RenderSettings(overlay: overlay, mirror: mirror, cameraRect: rect, cameraMask: mask, frostMask: overlay, frostRadius: min(60, max(0, doc.frostRadius ?? 40)), frostMaskGain: 8)
     }
 }
