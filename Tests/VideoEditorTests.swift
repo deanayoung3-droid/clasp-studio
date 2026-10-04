@@ -83,10 +83,10 @@ extension StudioTests {
                 editor.undo()
             }
             await MainActor.run {
-                editor.select(snapshot.clips[1].id); editor.changeClip { $0.topics = false }
+                editor.select(snapshot.clips[1].id); editor.changeClip { $0.topics = !snapshot.clips[1].topics }
                 check(editor.canUndo, "Timeline edits create an undo state")
                 editor.undo(); check(editor.document.clips[1].topics == snapshot.clips[1].topics && editor.canRedo, "Undo restores the previous clip settings")
-                editor.redo(); check(editor.document.clips[1].topics == false, "Redo restores the edit")
+                editor.redo(); check(editor.document.clips[1].topics == !snapshot.clips[1].topics, "Redo restores the edit")
             }
             let destination = directory.appendingPathComponent("edited-broadcast.mp4")
             try? FileManager.default.removeItem(at: destination)

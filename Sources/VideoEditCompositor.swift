@@ -60,6 +60,10 @@ struct EditShotRenderer: @unchecked Sendable {
         let split = Self.fit(leftImage, to: left, fill: clip.swapSides == true ? clip.secondaryFill : true).composited(over: Self.fit(rightImage, to: right, fill: clip.swapSides == true ? true : clip.secondaryFill).composited(over: matte))
         return renderer.composePreparedCamera(split, at: time)
     }
+    static let missingPicture: CIImage? = BroadcastGraphics.image { ctx in
+        BroadcastGraphics.fill(ctx, CGRect(x: 0, y: 0, width: 1280, height: 720), NSColor(studioHex: "1E2025"))
+        BroadcastGraphics.text("ADD IMAGE OR VIDEO", at: CGRect(x: 80, y: 326, width: 1120, height: 68), size: 28, weight: .medium, color: NSColor(white: 0.7, alpha: 1), alignment: .center)
+    }.map(CIImage.init(cgImage:))
     static func crop(_ image: CIImage, zoom: Double, x: Double, y: Double) -> CIImage {
         let factor = min(3, max(1, zoom.isFinite ? zoom : 1)), extent = image.extent
         let size = CGSize(width: extent.width / factor, height: extent.height / factor)

@@ -73,7 +73,7 @@ Each overlay saves component settings independently. Duplicate a design to creat
 
 New recordings are clean camera-and-microphone drafts. Press **Stop recording** to open the broadcast editor before exporting. Choose **Import video** in the studio to edit Zoom footage or another MOV/MP4 instead. **Drafts** reopens saved edits.
 
-Click a clip or drag the timeline ruler to scrub. **Layers** lists each shot’s video, picture, overlay, transition and audio. Selecting a layer shows only its controls in the inspector. The floating canvas toolbar switches between those controls. **Assets** holds imported media. Select a clip, set in/out points, or drag its white edges to trim. **Split** cuts at the playhead; **Remove** deletes a selected piece from the timeline. Drag a clip’s middle to reorder it, or use Earlier / Later in its inspector. Undo and redo restore edit states; source files are untouched.
+Click a clip or drag the timeline ruler to scrub. **Layers** lists each shot’s video, picture, overlay, transition and audio. Selecting a layer shows only its controls in the inspector. The floating canvas toolbar switches between those controls. **Assets** holds imported media. Select a clip, set in/out points, or drag its white edges to trim. **Split** cuts at the playhead; **Remove** deletes a selected piece from the timeline. The timeline has one row: overlay, picture and transition badges appear inside their shot. Drag a clip’s middle and use the insertion marker to place it before or after another shot, or use Earlier / Later in its inspector. Undo and redo restore edit states; source files are untouched.
 
 The clip inspector controls the picture, overlay, active headline and audio. **Image / video** replaces the presenter picture with supporting media. **Split screen** puts the presenter beside an image or guest video. Turn **Show topics sidebar** off to expand the picture; turn **Show overlay** off for a clean full-frame shot. Images fit without cropping unless **Fill and crop** is enabled. Guest videos loop to cover the clip, with optional guest audio.
 
@@ -89,7 +89,7 @@ Drafts autosave under `~/Library/Application Support/ClaspStudio/Drafts`. The an
 
 ## Expanded video editing
 
-The Video inspector provides frame stepping, duplicate, playback speed from 0.25× to 4×, zoom and horizontal/vertical crop positioning. Picture controls include adjustable splits, swapped sides and picture-in-picture. Animation transitions have a source start, start time within the shot, duration, opacity and volume. Drag their timeline bar to move them within that shot. Use **Preview transition** to play from the effect. **Clasp reveal** supplies a cached three-panel broadcast transition.
+The Video inspector provides frame stepping, duplicate, playback speed from 0.25× to 4×, zoom and horizontal/vertical crop positioning. Picture controls include adjustable splits, swapped sides and picture-in-picture. Animation transitions have a source start, start time within the shot, duration, opacity and volume. Click the shot’s transition badge and adjust **Start in shot** to move the animation within that shot. Use **Preview transition** to play from the effect. **Clasp reveal** supplies a cached three-panel broadcast transition.
 
 Law · Glass now blurs only the camera pixels behind its frosted panels. Blur and tint can be adjusted in the Headlines inspector. Law · Ticker uses the original supplied vector branding and an upward scrolling headline beside the brand, following script sections. Its camera remains full frame.
 
@@ -115,6 +115,6 @@ Reference images are stored with the project and draft, so moving the original i
 
 ## Automatic app updates
 
-Clasp Studio 2.0.4 and later check public GitHub releases on launch and hourly without requiring a GitHub account or token. Leave **Studio settings → GitHub updates → Automatically check and download updates** enabled. Verified updates install when you quit; use **Install and restart** to install sooner. Active recording and export are protected.
+Clasp Studio 2.0.4 and later check public GitHub releases on launch and every hour, with a catch-up check after wake, without requiring a GitHub account or token. Leave **Studio settings → GitHub updates → Automatically check and download updates** enabled. Verified updates install when you quit; use **Install and restart** to install sooner. Active recording and export are protected.
 
 If an older installation asks for GitHub access, install the latest DMG once to receive account-free updates going forward. Older copies with working GitHub access can receive this upgrade through their existing updater. A version without an updater cannot update itself remotely.

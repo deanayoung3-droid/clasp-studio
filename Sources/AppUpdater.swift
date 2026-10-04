@@ -110,22 +110,32 @@ enum UpdateCredentials {
     @Published var hasToken = false
     var restartRequested = false
     private var started = false
+    nonisolated static let checkInterval: TimeInterval = 3600
+    @Published private(set) var lastChecked: Date?
+    private var wakeObserver: NSObjectProtocol?
     private var timer: Timer?
     private var prepared: URL?
     private var updateBuild = 0
     private var cache: URL { FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("com.clasp.studio/updates", isDirectory: true) }
     var accountDescription: String { hasToken ? "Private-repository access saved in Keychain" : "Public updates work without a GitHub account. Access is only needed for private releases." }
     init() { hasToken = UpdateCredentials.token() != nil }
-    deinit { timer?.invalidate() }
+    deinit { timer?.invalidate(); if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) } }
     func start() {
         guard !started else { return }; started = true
         if automatic { Task { try? await Task.sleep(nanoseconds: 5_000_000_000); if self.automatic { await self.check() } } }
-        timer = Timer.scheduledTimer(withTimeInterval: 3600, repeats: true) { [weak self] _ in Task { @MainActor in if let self, self.automatic { await self.check() } } }
+        let hourly = Timer(timeInterval: Self.checkInterval, repeats: true) { [weak self] _ in Task { @MainActor in if let self, self.automatic { await self.check() } } }
+        RunLoop.main.add(hourly, forMode: .common); timer = hourly
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in Task { @MainActor in
+            guard let self, self.automatic, Self.checkIsDue(lastChecked: self.lastChecked, now: Date()) else { return }; await self.check()
+        } }
+    }
+    nonisolated static func checkIsDue(lastChecked: Date?, now: Date) -> Bool {
+        guard let lastChecked else { return true }; return now.timeIntervalSince(lastChecked) >= checkInterval
     }
     func saveToken(_ token: String) { do { try UpdateCredentials.save(token); hasToken = true; message = "GitHub connected. Check for updates when ready." } catch { message = error.localizedDescription } }
     func removeToken() { UpdateCredentials.remove(); hasToken = false; message = "GitHub access removed from Keychain." }
     func check() async {
-        guard !working else { return }; working = true; message = "Checking GitHub…"
+        guard !working else { return }; working = true; lastChecked = Date(); message = "Checking GitHub…"
         defer { working = false }
         do {
             let transport = GitHubTransport(token: UpdateCredentials.token())

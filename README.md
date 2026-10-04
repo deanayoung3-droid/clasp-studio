@@ -139,13 +139,13 @@ Voice following matches recognized English words to the script and pauses during
 
 Choose **Import video** in the studio to open one or more MOV/MP4 videos, including recordings from Zoom. Imported files are copied into a local draft; originals are left untouched. The editor supports ordinary video and audio timelines, 16:9 broadcast output, portrait video rotation, and silent footage.
 
-The left **Layers** list groups video, picture, overlay, transition and audio under each shot. The floating canvas toolbar switches between those controls, and the right inspector shows only the selected layer. **Assets** holds imported media; click a video to append it or an image to use it as a picture. The blue timeline clips are video; thin labeled rows are the overlay, supporting picture and transition.
+The left **Layers** list groups video, picture, overlay, transition and audio under each shot. The floating canvas toolbar switches between those controls, and the right inspector shows only the selected layer. **Assets** holds imported media; click a video to append it or an image to use it as a picture. The timeline uses one row of shot cards. Overlay, picture, transition and muted-audio badges live inside each shot; click a badge to open its controls. Drag a shot between its neighbors and use the insertion marker to place it before or after another shot. Its media, layout, effects and audio stay together.
 
 Each timeline clip can show the **Presenter**, a replacement **Image / video**, or a **Split screen** with a supporting image or guest video. Turn **Show topics sidebar** off for a wider picture, or turn **Show overlay** off for a clean full-frame view. Supporting images fit without cropping by default; **Fill and crop** switches to a cover crop. Short supporting videos loop to fill their selected clip. **Use supporting audio** mixes the second video’s sound with the original source.
 
 For a speaker change, split at the cut and select the incoming clip. Choose **News wipe**, **Fade through black**, or **Library animation**. The animation library supports multiple-file import, renaming and removal. Transparent ProRes MOVs composite over the program; opaque videos cover it. Animation audio mixes automatically and ducks presenter audio while the stinger plays. Animation files used in a draft are independent copies, so removing a library item does not break existing edits.
 
-Frame stepping, shot duplication, 0.25×–4× speed, zoom and crop positioning are available in the Video inspector. Picture controls add adjustable split positions, swapped sides and picture-in-picture. Animation controls set source in point, timeline offset, duration, opacity and volume; the animation’s timeline bar shows its actual length and can be dragged to move it within the shot. **Clasp reveal** is the built-in branded panel transition.
+Frame stepping, shot duplication, 0.25×–4× speed, zoom and crop positioning are available in the Video inspector. Picture controls add adjustable split positions, swapped sides and picture-in-picture. Animation controls set source in point, timeline offset, duration, opacity and volume; the transition badge opens controls for its start within the shot and its actual playback length. **Clasp reveal** is the built-in branded panel transition.
 
 ![Custom Clasp reveal transition](docs/media/reveal.gif) Scrubbing displays a composed still while paused.
 
@@ -162,7 +162,7 @@ flowchart LR
   E --> F[Install on quit or restart]
 ```
 
-The release workflow runs on pushes to `main` and can also be run manually from **Actions**. Each release has an increasing build number, a ZIP update, a styled DMG, and an Ed25519-signed manifest. The app checks on launch and hourly when automatic updates are enabled. It validates the release signature, ZIP checksum, app identity, build number and code signature before preparing an update.
+The release workflow runs on pushes to `main` and can also be run manually from **Actions**. Each release has an increasing build number, a ZIP update, a styled DMG, and an Ed25519-signed manifest. The app checks on launch and every hour when automatic updates are enabled, including during menu interactions, and catches up after the Mac wakes from sleep. It validates the release signature, ZIP checksum, app identity, build number and code signature before preparing an update.
 
 Downloaded updates install when you quit, or through **Studio settings → GitHub updates → Install and restart**. The app protects active recording and export from interruption. Installation keeps a previous copy until the new app passes verification and restores it if replacement fails.
 

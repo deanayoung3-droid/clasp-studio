@@ -62,6 +62,21 @@ struct VideoEditDocument: Codable {
     var duration: Double { clips.reduce(0) { $0 + $1.duration } }
     var outputRect: CGRect { BroadcastGraphics.outputRect(broadcast) }
     var outputAspectRatio: CGFloat { outputRect.width / outputRect.height }
+    func insertionIndex(at seconds: Double) -> Int {
+        var cursor = 0.0
+        for (index, clip) in clips.enumerated() {
+            if seconds < cursor + clip.duration / 2 { return index }
+            cursor += clip.duration
+        }
+        return clips.count
+    }
+    mutating func insertClip(_ id: UUID, at boundary: Int) -> Bool {
+        guard let source = clips.firstIndex(where: { $0.id == id }), (0...clips.count).contains(boundary) else { return false }
+        let destination = boundary > source ? boundary - 1 : boundary
+        guard destination != source else { return false }
+        let item = clips.remove(at: source); clips.insert(item, at: destination)
+        return true
+    }
     func start(of id: UUID) -> Double { clips.prefix(while: { $0.id != id }).reduce(0) { $0 + $1.duration } }
     func clip(at time: Double) -> EditClip? {
         var cursor = 0.0

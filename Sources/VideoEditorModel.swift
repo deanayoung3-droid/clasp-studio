@@ -67,7 +67,32 @@ import Combine
     func redo() { guard !isExporting, let value = next.popLast() else { return }; previous.append(document); document = value; selection = document.clips.first?.id; updateHistory() }
     func changeClip(_ change: (inout EditClip) -> Void) {
         guard !isExporting, let index = document.clips.firstIndex(where: { $0.id == selection }) else { return }
-        remember(); var copy = document; change(&copy.clips[index]); document = copy
+        var copy = document; change(&copy.clips[index])
+        guard copy.clips != document.clips else { return }
+        remember(); document = copy; focusSelectedShot()
+    }
+    private func focusSelectedShot() {
+        guard let selected else { return }
+        let start = document.start(of: selected.id)
+        if position < start || position >= start + selected.duration { seek(start) }
+    }
+    func setLayout(_ layout: EditLayout) {
+        let support = selected?.secondaryID ?? document.media.first(where: { $0.kind != .animation && $0.id != selected?.mediaID })?.id
+        changeClip { shot in
+            shot.layout = layout
+            if layout != .presenter, shot.secondaryID == nil, let support {
+                shot.secondaryID = support; shot.secondaryStart = 0
+                shot.secondaryFill = document.media.first(where: { $0.id == support })?.kind == .video
+            }
+        }
+    }
+    func setSupportingMedia(_ id: UUID?) {
+        changeClip { shot in shot.secondaryID = id; shot.secondaryStart = 0; shot.secondaryFill = document.media.first(where: { $0.id == id })?.kind == .video }
+    }
+    func insertClip(_ id: UUID, at boundary: Int) {
+        guard !isExporting else { return }
+        var copy = document; guard copy.insertClip(id, at: boundary) else { select(id); return }
+        remember(); document = copy; select(id); status = "Shot moved · effects and audio moved with it"
     }
     func trim(start: Double? = nil, end: Double? = nil) {
         guard let clip = selected, let source = document.media.first(where: { $0.id == clip.mediaID }) else { return }
@@ -162,12 +187,13 @@ import Combine
     func addExistingMedia(_ id: UUID) {
         guard !isExporting, let media = document.media.first(where: { $0.id == id && $0.kind == .video }) else { return }
         remember(); let clip = EditClip(mediaID: id, start: 0, end: media.duration, overlayID: document.broadcast.selectedOverlayID)
-        document.clips.append(clip); selection = clip.id
+        document.clips.append(clip); select(clip.id)
     }
     func importMedia(_ kind: EditMedia.Kind, secondary: Bool = false) {
         guard !isExporting, !importing else { return }
+        let targetID = secondary ? selected?.id : nil
         StudioFileDialog.media(image: kind == .image, multiple: !secondary, message: kind == .image ? "Choose an image for this shot" : secondary ? "Choose a guest or supporting video" : "Import footage into this draft") { [weak self] urls in
-            self?.importMediaFiles(urls, kind: kind, secondary: secondary)
+            self?.importMediaFiles(urls, kind: kind, secondary: secondary, targetID: targetID)
         }
     }
     func importReferenceImage() {
@@ -191,21 +217,23 @@ import Combine
             }
         }
     }
-    private func importMediaFiles(_ urls: [URL], kind: EditMedia.Kind, secondary: Bool) {
+    func importMediaFiles(_ urls: [URL], kind: EditMedia.Kind, secondary: Bool, targetID: UUID?) {
         guard !isExporting, !importing, !urls.isEmpty else { return }
         importing = true
         Task {
             do {
                 remember()
                 for url in urls {
+                    if secondary, !document.clips.contains(where: { $0.id == targetID }) { throw StudioError.message("The selected shot was removed. Select a shot and add its supporting media again.") }
                     let length = try await EditStorage.inspect(url, kind: kind)
                     let media = EditMedia(name: url.lastPathComponent, fileName: UUID().uuidString + "." + url.pathExtension, kind: kind, duration: length)
                     let destination = EditStorage.source(media, in: folder)
                     try await Task.detached { try FileManager.default.copyItem(at: url, to: destination) }.value
                     var copy = document; copy.media.append(media)
-                    if secondary, let index = copy.clips.firstIndex(where: { $0.id == selection }) { copy.clips[index].secondaryID = media.id; if copy.clips[index].layout == .presenter { copy.clips[index].layout = .replacement }; copy.clips[index].secondaryStart = 0; copy.clips[index].secondaryFill = kind == .video }
+                    if secondary, let index = copy.clips.firstIndex(where: { $0.id == targetID }) { copy.clips[index].secondaryID = media.id; if copy.clips[index].layout == .presenter { copy.clips[index].layout = .replacement }; copy.clips[index].secondaryStart = 0; copy.clips[index].secondaryFill = kind == .video }
                     else if kind == .video { let clip = EditClip(mediaID: media.id, start: 0, end: length, overlayID: copy.broadcast.selectedOverlayID); copy.clips.append(clip); selection = clip.id }
                     document = copy
+                    if secondary, let targetID { select(targetID) } else { focusSelectedShot() }
                 }
                 await refreshThumbnails()
             } catch { self.error = error.localizedDescription }

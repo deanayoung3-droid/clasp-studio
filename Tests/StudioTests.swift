@@ -347,6 +347,8 @@ enum StudioTests {
         print("ALL CHECKS PASSED")
     }
     static func updateSignatureChecks() {
+        let checked = Date(timeIntervalSince1970: 10000)
+        check(!AppUpdater.checkIsDue(lastChecked: checked, now: checked.addingTimeInterval(3599)) && AppUpdater.checkIsDue(lastChecked: checked, now: checked.addingTimeInterval(3600)) && AppUpdater.checkIsDue(lastChecked: checked, now: checked.addingTimeInterval(7200)), "Hourly updates wait one hour and catch up after a sleeping Mac wakes")
         let key = Curve25519.Signing.PrivateKey(), zip = Data("A signed archive".utf8)
         let manifest = UpdateManifest(repository: UpdateVerification.repository, version: "1.7.1", build: 1001, asset: "Clasp-Studio.zip", size: zip.count, sha256: SHA256.hash(data: zip).map { String(format: "%02x", $0) }.joined())
         let body = try! JSONEncoder().encode(manifest), signature = try! key.signature(for: body)

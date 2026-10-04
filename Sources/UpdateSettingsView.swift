@@ -9,7 +9,7 @@ struct UpdateSettingsView: View {
             HStack { Text("GitHub updates").font(.system(size: 13, weight: .semibold)); Spacer(); Text("Build \(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "")").font(.system(size: 10)).foregroundStyle(.secondary) }
             Text(updater.message).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Toggle("Automatically check and download updates", isOn: $updater.automatic).toggleStyle(.checkbox).font(.system(size: 11))
-            Text("Downloaded updates install when you quit. Recording and saving always finish first.").font(.system(size: 10)).foregroundStyle(.secondary)
+            Text("Checks at launch and every hour, and catches up after your Mac wakes. Downloaded updates install when you quit. Recording and saving always finish first.").font(.system(size: 10)).foregroundStyle(.secondary)
             HStack {
                 Button(updater.working ? "Checking…" : "Check for updates") { Task { await updater.check() } }.disabled(updater.working)
                 if updater.ready { Button("Install and restart") {

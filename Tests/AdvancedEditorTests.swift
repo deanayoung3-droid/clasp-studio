@@ -67,5 +67,6 @@ extension StudioTests {
         check(inside > 0.25 && inside < 0.75 && (outside < 0.1 || outside > 0.9), "Frosted overlay panels blur their backdrop while the camera remains sharp elsewhere")
         try await svgOverlayChecks()
         try await referenceImageChecks(main: main, folder: folder)
+        try await singleLaneEditorChecks(main: main, folder: folder)
     }
 }

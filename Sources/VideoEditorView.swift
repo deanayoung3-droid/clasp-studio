@@ -22,6 +22,8 @@ struct VideoEditorView: View {
     @ObservedObject var model: VideoEditorModel
     @State private var zoom = 32.0
     @State private var timelineWidth = 850.0
+    @State private var draggedShot: UUID?
+    @State private var insertion: Int?
     @State private var browser = "Layers"
     @State private var target = EditInspectorTarget.footage
     private func clip<T>(_ key: WritableKeyPath<EditClip, T>, fallback: T) -> Binding<T> {
@@ -36,7 +38,7 @@ struct VideoEditorView: View {
                 VStack(spacing: 0) {
                     canvas.frame(maxHeight: .infinity)
                     Divider().overlay(editLine)
-                    timeline.frame(height: 280)
+                    timeline.frame(height: 180)
                 }.frame(maxWidth: .infinity)
                 Divider().overlay(editLine)
                 inspector.frame(width: 255)
@@ -125,6 +127,9 @@ struct VideoEditorView: View {
                         if let image = model.presentationStill ?? (model.playing ? nil : model.pausedFrame) { Image(nsImage: image).resizable().scaledToFit() }
                         if model.preparing { ProgressView("Preparing video…").font(.system(size: 11)).padding(14).background(editPanel.opacity(0.95)).clipShape(RoundedRectangle(cornerRadius: 6)) }
                         else if model.document.clips.isEmpty { VStack(spacing: 12) { Image(systemName: "film.stack").font(.system(size: 27, weight: .light)); Text("Start with a video").font(.system(size: 17)); Button("Import footage…") { model.importMedia(.video) } }.foregroundStyle(.secondary) }
+                        else if let shot = model.document.clip(at: model.position), shot.layout != .presenter, shot.secondaryID == nil {
+                            VStack(spacing: 8) { Text("Complete your \(shot.layout.rawValue.lowercased())").font(.system(size: 12, weight: .medium)); HStack { Button("Add image…") { model.select(shot.id); model.importMedia(.image, secondary: true) }; Button("Add video…") { model.select(shot.id); model.importMedia(.video, secondary: true) } }.controlSize(.small) }.padding(12).background(editPanel.opacity(0.96)).clipShape(RoundedRectangle(cornerRadius: 7))
+                        }
                         else if let failure = model.previewFailure { VStack(spacing: 10) { Text("Preview couldn’t load").fontWeight(.medium); Text(failure).font(.system(size: 11)); Button("Retry") { model.scheduleRebuild() } }.padding(24).background(editPanel).clipShape(RoundedRectangle(cornerRadius: 7)) }
                     }.aspectRatio(model.document.outputAspectRatio, contentMode: .fit).background(.black).frame(maxWidth: .infinity, maxHeight: .infinity).padding(.horizontal, 10).padding(.bottom, 22)
                     canvasTools.padding(.bottom, 8)
@@ -138,7 +143,7 @@ struct VideoEditorView: View {
             tool("Split", "scissors") { model.split(); target = .footage }.keyboardShortcut("b", modifiers: [.command])
             Divider().frame(height: 21).padding(.horizontal, 3)
             tool("Picture", "photo") { target = .picture }
-            tool("Split screen", "rectangle.split.2x1") { target = .picture; model.changeClip { $0.layout = .split } }
+            tool("Split screen", "rectangle.split.2x1") { target = .picture; model.setLayout(.split) }
             tool("Overlay", "square.3.layers.3d") { target = .graphics }
             tool("Transition", "sparkles") { target = .transition }
             Divider().frame(height: 21).padding(.horizontal, 3)
@@ -196,11 +201,11 @@ struct VideoEditorView: View {
     private func pictureControls(_ selected: EditClip) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Layout").foregroundStyle(.secondary)
-            Picker("Layout", selection: clip(\.layout, fallback: .presenter)) { ForEach(EditLayout.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.labelsHidden()
+            Picker("Layout", selection: Binding(get: { selected.layout }, set: { model.setLayout($0) })) { ForEach(EditLayout.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.labelsHidden()
             if selected.layout == .presenter { Text("The original video fills the camera area.").foregroundStyle(.secondary).lineSpacing(4) }
             else {
                 Text("Supporting media").foregroundStyle(.secondary)
-                Picker("Supporting media", selection: clip(\.secondaryID, fallback: nil)) { Text("Choose a file…").tag(Optional<UUID>.none); ForEach(model.document.media.filter { $0.kind != .animation }) { Text($0.name).tag(Optional($0.id)) } }.labelsHidden()
+                Picker("Supporting media", selection: Binding(get: { model.selected?.secondaryID }, set: { model.setSupportingMedia($0) })) { Text("Choose a file…").tag(Optional<UUID>.none); ForEach(model.document.media.filter { $0.kind != .animation }) { Text($0.name).tag(Optional($0.id)) } }.labelsHidden()
                 HStack { Button("Add image…") { model.importMedia(.image, secondary: true) }; Button("Add video…") { model.importMedia(.video, secondary: true) } }.controlSize(.small)
                 if let id = selected.secondaryID, let image = model.thumbnails[id] { Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 115).clipShape(RoundedRectangle(cornerRadius: 5)) }
                 if selected.layout == .split {
@@ -297,15 +302,17 @@ struct VideoEditorView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             ruler(width: width)
                             HStack(spacing: 0) { ForEach(Array(model.document.clips.enumerated()), id: \.element.id) { index, item in
-                                EditTimelineClip(model: model, clip: item, index: index, zoom: zoom, accent: editAccent) { target = .footage }.frame(width: max(1, item.duration * zoom), height: 42)
+                                EditTimelineClip(model: model, clip: item, index: index, zoom: zoom, accent: editAccent, dragging: draggedShot == item.id, selectLayer: { target = $0 }, dragChanged: { id, time in draggedShot = id; insertion = model.document.insertionIndex(at: time) }, dragEnded: { id, time in model.insertClip(id, at: model.document.insertionIndex(at: time)); draggedShot = nil; insertion = nil }).frame(width: max(1, item.duration * zoom), height: 66)
                             } }
-                            HStack(spacing: 0) { ForEach(model.document.clips) { item in layerClip(item, layer: .graphics).frame(width: max(1, item.duration * zoom), height: 28) } }
-                            if model.document.clips.contains(where: { $0.layout != .presenter || referenceShown($0) }) { HStack(spacing: 0) { ForEach(model.document.clips) { item in layerClip(item, layer: .picture).frame(width: max(1, item.duration * zoom), height: 28) } } }
-                            if model.document.clips.contains(where: { $0.transition != .cut }) { HStack(spacing: 0) { ForEach(model.document.clips) { item in layerClip(item, layer: .transition).frame(width: max(1, item.duration * zoom), height: 28) } } }
+                            HStack { Text(draggedShot == nil ? "Drag shots to reorder · drag selected edges to trim · click a badge to edit" : insertion == model.document.clips.count ? "Drop after the last shot" : "Drop before Shot \((insertion ?? 0) + 1)"); Spacer() }.font(.system(size: 10)).foregroundStyle(.secondary)
                         }.frame(width: width, alignment: .leading)
-                        Rectangle().fill(editAccent).frame(width: 1, height: 195).offset(x: min(width, model.position * zoom), y: 0).allowsHitTesting(false)
+                        Rectangle().fill(editAccent).frame(width: 1, height: 112).offset(x: min(width, model.position * zoom), y: 0).allowsHitTesting(false)
+                        if let insertion, draggedShot != nil {
+                            let x = model.document.clips.prefix(insertion).reduce(0) { $0 + $1.duration } * zoom
+                            RoundedRectangle(cornerRadius: 2).fill(.white).frame(width: 3, height: 76).offset(x: x - 1.5, y: 40).allowsHitTesting(false)
+                        }
                         Text(shortTime(model.position)).font(.system(size: 9, weight: .medium, design: .monospaced)).padding(.horizontal, 5).padding(.vertical, 3).background(editAccent).clipShape(RoundedRectangle(cornerRadius: 4)).offset(x: max(0, min(width - 42, model.position * zoom - 18)), y: 2).allowsHitTesting(false)
-                    }.padding(.horizontal, 12).padding(.bottom, 12)
+                    }.coordinateSpace(name: "editTimeline").padding(.horizontal, 12).padding(.bottom, 12)
                 }.onAppear { timelineWidth = max(1, Double(geometry.size.width) - 24); fitTimeline() }.onChange(of: geometry.size.width) { _, width in timelineWidth = max(1, Double(width) - 24) }
             }
         }.background(Color(white: 0.06))
@@ -321,27 +328,6 @@ struct VideoEditorView: View {
             }
         }.frame(width: width, height: 33).contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onChanged { value in model.seek(value.location.x / zoom) }).accessibilityLabel("Timeline. Drag to move the playhead.")
     }
-    private func layerClip(_ item: EditClip, layer: EditInspectorTarget) -> some View {
-        let visible = layer == .graphics ? item.graphics : layer == .picture ? item.layout != .presenter || referenceShown(item) : item.transition != .cut
-        let color = layer == .graphics ? Color.white : editAccent
-        if layer == .transition { return AnyView(transitionBar(item)) }
-        return AnyView(HStack(spacing: 6) { if visible { Image(systemName: layer.symbol); Text(layer == .graphics ? "Overlay" : layer == .picture ? (item.layout == .presenter && referenceShown(item) ? "Reference image" : item.layout.rawValue) : item.transition.rawValue).lineLimit(1) }; Spacer(minLength: 0) }.font(.system(size: 9)).padding(.horizontal, 7).background(visible ? color.opacity(0.08) : .clear).clipShape(RoundedRectangle(cornerRadius: 5)).overlay(RoundedRectangle(cornerRadius: 5).stroke(visible ? color.opacity(0.3) : .clear)).padding(.trailing, 3).clipped().onTapGesture { model.select(item.id); target = layer })
-    }
-    private func referenceShown(_ clip: EditClip) -> Bool { (clip.referenceOverride == true ? clip.reference : model.document.broadcast.reference)?.visible == true }
-    private func transitionBar(_ item: EditClip) -> some View {
-        let offset = item.transition == .library ? min(max(0, item.animationOffset ?? 0), max(0, item.duration - 1.0 / 30)) : 0
-        let media = model.document.media.first(where: { $0.id == item.animationID })
-        let length = item.transition == .cut ? 0 : item.transition == .library ? min(item.duration - offset, item.transitionDuration, max(0, (media?.duration ?? item.transitionDuration) - (item.animationStart ?? 0))) : min(item.duration, item.transitionDuration / 2)
-        return HStack(spacing: 0) {
-            Color.clear.frame(width: max(0, offset * zoom))
-            if length > 0 {
-                HStack(spacing: 5) { Image(systemName: "sparkles"); Text(item.transition == .library ? media?.name ?? "Choose animation" : item.transition.rawValue).lineLimit(1) }.font(.system(size: 9)).padding(.horizontal, 6).frame(width: max(20, length * zoom), alignment: .leading).background(editAccent.opacity(0.12)).clipShape(RoundedRectangle(cornerRadius: 5)).overlay(RoundedRectangle(cornerRadius: 5).stroke(editAccent.opacity(0.5))).clipped()
-                    .onTapGesture { model.select(item.id); model.seek(model.document.start(of: item.id) + offset); target = .transition }
-                    .gesture(DragGesture(minimumDistance: 5).onEnded { value in if item.transition == .library { model.selection = item.id; model.changeClip { $0.animationOffset = min(max(0, offset + value.translation.width / zoom), max(0, item.duration - 1.0 / 30)) }; model.seek(model.document.start(of: item.id) + (model.selected?.animationOffset ?? 0)); target = .transition } })
-            }
-            Spacer(minLength: 0)
-        }.frame(height: 28).clipped().contentShape(Rectangle()).onTapGesture { model.select(item.id); target = .transition }
-    }
     private func shortTime(_ seconds: Double) -> String { String(format: "%.2fs", seconds) }
 }
 private struct EditTimelineClip: View {
@@ -350,35 +336,54 @@ private struct EditTimelineClip: View {
     let index: Int
     let zoom: Double
     let accent: Color
-    var selected: () -> Void
+    let dragging: Bool
+    var selectLayer: (EditInspectorTarget) -> Void
+    var dragChanged: (UUID, Double) -> Void
+    var dragEnded: (UUID, Double) -> Void
     @State private var trimDelta = 0.0
+    private var referenceVisible: Bool { (clip.referenceOverride == true ? clip.reference : model.document.broadcast.reference)?.visible == true }
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 LinearGradient(colors: [accent.opacity(0.16), accent.opacity(0.025)], startPoint: .top, endPoint: .bottom)
-                HStack(spacing: 7) { Image(systemName: "film"); Text("Shot \(index + 1)").fontWeight(.medium); Spacer(minLength: 0) }.font(.system(size: 10)).padding(.horizontal, 12).lineLimit(1)
+                HStack(spacing: 8) {
+                    HStack(spacing: 7) {
+                        if geometry.size.width > 180, let image = model.thumbnails[clip.mediaID] { Image(nsImage: image).resizable().scaledToFill().frame(width: 42, height: 42).clipped().clipShape(RoundedRectangle(cornerRadius: 4)) }
+                        Text("Shot \(index + 1)").fontWeight(.medium).lineLimit(1)
+                    }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle()).onTapGesture(coordinateSpace: .local) { point in
+                        model.selection = clip.id; model.seek(model.document.start(of: clip.id) + min(clip.duration, max(0, (point.x + 12) / zoom))); selectLayer(.footage)
+                    }
+                    if geometry.size.width > 110 {
+                        if clip.graphics { badge(.graphics, name: "Overlay") }
+                        if clip.layout != .presenter || referenceVisible { badge(.picture, name: clip.layout == .presenter ? "Reference" : clip.layout.rawValue) }
+                        if clip.transition != .cut { badge(.transition, name: clip.transition.rawValue) }
+                        if clip.volume == 0 { badge(.audio, name: "Muted") }
+                    }
+                }.font(.system(size: 10)).padding(.horizontal, 12)
                 if abs(trimDelta) > 0.01 { Text(String(format: "%+.2fs", trimDelta)).font(.system(size: 9, design: .monospaced)).padding(4).background(Color.black.opacity(0.7)).clipShape(RoundedRectangle(cornerRadius: 3)).frame(maxWidth: .infinity, alignment: .center) }
                 if model.selection == clip.id { HStack { handle(start: true); Spacer(minLength: 0); handle(start: false) } }
-            }.clipShape(RoundedRectangle(cornerRadius: 7)).overlay(RoundedRectangle(cornerRadius: 7).stroke(model.selection == clip.id ? accent : accent.opacity(0.5), lineWidth: model.selection == clip.id ? 2 : 1)).contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 3).onEnded { value in
-                    guard !model.isExporting else { return }
-                    model.selection = clip.id
-                    let destinationTime = max(0, min(model.duration - 0.001, model.document.start(of: clip.id) + clip.duration / 2 + value.translation.width / zoom))
-                    if let destination = model.document.clip(at: destinationTime), let target = model.document.clips.firstIndex(where: { $0.id == destination.id }) { model.moveClip(clip.id, to: target) }
-                    selected()
-                })
-                .contextMenu { Button("Duplicate shot") { model.selection = clip.id; model.duplicate() }; Button("Split at playhead") { model.split() }; Button("Remove shot") { model.selection = clip.id; model.delete() } }
-                .onTapGesture(coordinateSpace: .local) { point in model.selection = clip.id; model.seek(model.document.start(of: clip.id) + min(clip.duration, max(0, point.x / zoom))); selected() }
-                .contextMenu { Button("Split at playhead") { model.split() }; Button("Remove shot") { model.selection = clip.id; model.delete() }; Button("Move earlier") { model.selection = clip.id; model.move(-1) }; Button("Move later") { model.selection = clip.id; model.move(1) } }
-                .accessibilityLabel("Shot \(index + 1). Click to select and scrub, drag to reorder.")
+            }.clipShape(RoundedRectangle(cornerRadius: 7)).overlay(RoundedRectangle(cornerRadius: 7).stroke(model.selection == clip.id ? accent : accent.opacity(0.5), lineWidth: model.selection == clip.id ? 2 : 1)).opacity(dragging ? 0.5 : 1).contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 6, coordinateSpace: .named("editTimeline")).onChanged { value in guard !model.isExporting else { return }; dragChanged(clip.id, value.location.x / zoom) }.onEnded { value in guard !model.isExporting else { return }; dragEnded(clip.id, value.location.x / zoom); selectLayer(.footage) })
+                .contextMenu {
+                    Button("Duplicate shot") { model.selection = clip.id; model.duplicate() }
+                    Button("Split at playhead") { model.split() }
+                    Button("Remove shot") { model.selection = clip.id; model.delete() }
+                    Divider()
+                    Button("Move earlier") { model.selection = clip.id; model.move(-1) }
+                    Button("Move later") { model.selection = clip.id; model.move(1) }
+                }
+                .accessibilityElement(children: .contain).accessibilityLabel("Shot \(index + 1). Drag before or after another shot to reorder.")
         }.padding(.trailing, 3)
     }
+    private func badge(_ layer: EditInspectorTarget, name: String) -> some View {
+        Button { model.select(clip.id); selectLayer(layer) } label: { Image(systemName: layer.symbol).font(.system(size: 10)).frame(width: 23, height: 26).background(.white.opacity(0.08)).clipShape(RoundedRectangle(cornerRadius: 4)) }.buttonStyle(.plain).help(name).accessibilityLabel("Shot \(index + 1): \(name)")
+    }
     private func handle(start: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 1).fill(accent).frame(width: 3, height: 18).frame(width: 12, height: 42).contentShape(Rectangle()).highPriorityGesture(DragGesture(minimumDistance: 1).onChanged { value in trimDelta = value.translation.width / zoom }.onEnded { value in
+        RoundedRectangle(cornerRadius: 1).fill(accent).frame(width: 3, height: 24).frame(width: 12, height: 66).contentShape(Rectangle()).highPriorityGesture(DragGesture(minimumDistance: 1).onChanged { value in trimDelta = value.translation.width / zoom }.onEnded { value in
             guard !model.isExporting else { return }; model.selection = clip.id
-            let delta = (value.translation.width / zoom * 30).rounded() / 30
+            let delta = (value.translation.width / zoom * 30).rounded() / 30 * clip.safeSpeed
             if start { model.trim(start: clip.start + delta) } else { model.trim(end: clip.end + delta) }
-            trimDelta = 0; selected()
+            trimDelta = 0; selectLayer(.footage)
         }).help(start ? "Drag to trim the start" : "Drag to trim the end")
     }
 }
