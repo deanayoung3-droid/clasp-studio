@@ -312,6 +312,22 @@ enum StudioTests {
             check(attached, "The recording bridge observes its actual window attachment")
         }
         updateSignatureChecks()
+        await MainActor.run {
+            let name = "Clasp-update-consent-test-" + UUID().uuidString
+            let preferences = UserDefaults(suiteName: name)!
+            defer { preferences.removePersistentDomain(forName: name) }
+            let updater = AppUpdater(preferences: preferences)
+            updater.ready = true
+            check(updater.shouldInstallOnQuit, "A prepared automatic update can install on quit")
+            updater.postponeInstallation()
+            check(!updater.shouldInstallOnQuit, "Choosing Later prevents the prepared update from installing on quit")
+            let reopened = AppUpdater(preferences: preferences); reopened.ready = true
+            check(!reopened.shouldInstallOnQuit, "A deferred update still requires approval after restarting the app")
+            check(!reopened.approveInstallation(build: 1) && !reopened.shouldInstallOnQuit, "Approval cannot install a different update than the one offered")
+            check(reopened.approveInstallation(build: 0) && reopened.shouldInstallOnQuit, "Explicit approval enables installation of the offered update")
+            reopened.working = true
+            check(!reopened.approveInstallation(), "Installation cannot restart the app while its download is in progress")
+        }
         await libraryChecks()
         let profiling = CaptureEngine()
         profiling.update(BroadcastGraphics.renderSettings(StudioProject(), activeIndex: 0, epoch: ProcessInfo.processInfo.systemUptime))

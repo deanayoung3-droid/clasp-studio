@@ -113,6 +113,10 @@ SVGs must be under 12 MB. Embedded PNG, JPEG, GIF and WebP logos work; external 
 
 Reference images are stored with the project and draft, so moving the original image file does not break an edit. They also work with imported video and split-screen layouts. Image decoding and card drawing happen when controls change, not on every camera frame.
 
+## Checking for app updates
+
+Click **Check for Updates** in the studio header, editor header, Studio settings, or the **Clasp Studio** app menu. If a newer signed version is available, it downloads and verifies, then asks whether to **Update & Restart** or choose **Later**. Your draft saves before restarting. During recording, export or import, choose **Update When I Quit** instead; the app keeps working. **Later** defers that version until you approve it, including after relaunch. If you are current, the app says so; connection failures are shown clearly.
+
 ## Automatic app updates
 
 Clasp Studio 2.0.4 and later check public GitHub releases on launch and every hour, with a catch-up check after wake, without requiring a GitHub account or token. Leave **Studio settings → GitHub updates → Automatically check and download updates** enabled. Verified updates install when you quit; use **Install and restart** to install sooner. Active recording and export are protected.
@@ -121,4 +125,4 @@ If an older installation asks for GitHub access, install the latest DMG once to 
 
 ## Backdrop blur
 
-Imported SVG overlays blur the camera beneath translucent artwork by default, preserving the original gradient, sharp text and logos, and the transparent camera area. Adjust **Backdrop blur** in the SVG inspector (0–60); zero disables the effect. **Law · Ticker** uses a stronger, softly feathered lower-third blur, adjustable through **Headlines → Blur**. The same rendering is used in live preview and exported edits.
+Imported SVG overlays use a subtle blur (10 by default) weighted by the artwork’s original transparency. The original gradient stays gradual; text, logos and the clear camera area stay sharp. Adjust **Backdrop blur** in the SVG inspector (0–60); zero disables the effect. **Law · Ticker** uses a stronger, softly feathered lower-third blur, adjustable through **Headlines → Blur**. The same rendering is used in live preview and exported edits.

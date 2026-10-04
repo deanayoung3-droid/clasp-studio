@@ -56,6 +56,7 @@ struct VideoEditorView: View {
             Button { studio.closeVideoEditor() } label: { Image(systemName: "chevron.left").frame(width: 24, height: 28) }.help("Back to studio · draft stays saved").disabled(model.isExporting || model.importing)
             TextField("Broadcast name", text: $model.document.name).font(.system(size: 13, weight: .medium)).textFieldStyle(.plain).frame(maxWidth: 360).disabled(model.isExporting)
             Spacer()
+            AppUpdateCheckButton(model: studio, updater: studio.updater).font(.system(size: 11))
             Button { studio.discardDraft() } label: { Label("Discard draft", systemImage: "trash") }.disabled(model.isExporting || model.importing).help("Move this draft to Trash; original imports and exports are kept")
             Button { studio.discardDraft(retake: true) } label: { Label("Retake", systemImage: "arrow.counterclockwise") }.disabled(model.isExporting || model.importing).help("Move this draft to Trash and record again from the start of your script")
             if model.importing { ProgressView().controlSize(.small); Text("Importing…").font(.system(size: 11)) }

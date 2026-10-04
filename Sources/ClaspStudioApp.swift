@@ -118,6 +118,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 DispatchQueue.main.async { NSApp.windows.first(where: { $0.title == "Clasp Studio" })?.delegate = delegate }
             }
         }.defaultSize(width: 1440, height: 900).windowStyle(.hiddenTitleBar).windowToolbarStyle(.unified).commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { model.checkForUpdates() }
+            }
             CommandGroup(replacing: .newItem) {
                 Button("Import Video…") { model.importVideo() }.keyboardShortcut("i").disabled(model.busy || model.videoEditor != nil)
                 Button("Open Drafts…") { model.draftsOpen = true }.disabled(model.busy || model.videoEditor != nil)

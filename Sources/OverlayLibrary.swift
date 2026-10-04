@@ -128,12 +128,7 @@ struct BroadcastFrameRenderer: @unchecked Sendable {
     private let referenceCard: CIImage?
     init(_ settings: RenderSettings) {
         self.settings = settings; overlay = settings.overlay.map(CIImage.init(cgImage:))
-        mask = settings.cameraMask.map(CIImage.init(cgImage:))
-        frostMask = settings.frostMask.map { image in
-            let mask = CIImage(cgImage: image)
-            guard settings.frostMaskGain != 1 else { return mask }
-            return mask.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: settings.frostMaskGain)]).applyingFilter("CIColorClamp", parameters: ["inputMinComponents": CIVector(x: 0, y: 0, z: 0, w: 0), "inputMaxComponents": CIVector(x: 1, y: 1, z: 1, w: 1)])
-        }
+        mask = settings.cameraMask.map(CIImage.init(cgImage:)); frostMask = settings.frostMask.map(CIImage.init(cgImage:))
         referenceCard = settings.referenceCard.map(CIImage.init(cgImage:))
     }
     func compose(_ source: CIImage, at time: Double = ProcessInfo.processInfo.systemUptime) -> CIImage {

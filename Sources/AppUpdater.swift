@@ -102,6 +102,11 @@ enum UpdateCredentials {
     }
     static func remove() { SecItemDelete(query as CFDictionary) }
 }
+struct UpdateCheckNotice {
+    let title: String
+    let detail: String
+    var offeredBuild: Int? = nil
+}
 @MainActor final class AppUpdater: ObservableObject {
     @Published var message = "Signed updates download automatically from GitHub and install when you quit."
     @Published var working = false
@@ -116,9 +121,11 @@ enum UpdateCredentials {
     private var timer: Timer?
     private var prepared: URL?
     private var updateBuild = 0
+    private let preferences: UserDefaults
+    var shouldInstallOnQuit: Bool { ready && (preferences.object(forKey: "deferredUpdateBuild") as? Int) != updateBuild }
     private var cache: URL { FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("com.clasp.studio/updates", isDirectory: true) }
     var accountDescription: String { hasToken ? "Private-repository access saved in Keychain" : "Public updates work without a GitHub account. Access is only needed for private releases." }
-    init() { hasToken = UpdateCredentials.token() != nil }
+    init(preferences: UserDefaults = .standard) { self.preferences = preferences; hasToken = UpdateCredentials.token() != nil }
     deinit { timer?.invalidate(); if let wakeObserver { NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver) } }
     func start() {
         guard !started else { return }; started = true
@@ -134,9 +141,10 @@ enum UpdateCredentials {
     }
     func saveToken(_ token: String) { do { try UpdateCredentials.save(token); hasToken = true; message = "GitHub connected. Check for updates when ready." } catch { message = error.localizedDescription } }
     func removeToken() { UpdateCredentials.remove(); hasToken = false; message = "GitHub access removed from Keychain." }
-    func check() async {
-        guard !working else { return }; working = true; lastChecked = Date(); message = "Checking GitHub…"
+    @discardableResult func check(manually: Bool = false) async -> UpdateCheckNotice {
+        guard !working else { return UpdateCheckNotice(title: "Checking for updates", detail: "An update check is already in progress.") }; working = true; lastChecked = Date(); message = "Checking GitHub…"
         defer { working = false }
+        if manually { postponeInstallation() }
         do {
             let transport = GitHubTransport(token: UpdateCredentials.token())
             let release = try JSONDecoder().decode(GitHubRelease.self, from: await transport.get("repos/" + UpdateVerification.repository + "/releases/latest"))
@@ -145,10 +153,10 @@ enum UpdateCredentials {
             guard let signature = Data(base64Encoded: signatureText, options: .ignoreUnknownCharacters), let keyURL = Bundle.main.url(forResource: "UpdatePublicKey", withExtension: "txt"), let key = Data(base64Encoded: try Data(contentsOf: keyURL), options: .ignoreUnknownCharacters) else { throw UpdateError.message("The update signing key is unavailable.") }
             let manifest = try UpdateVerification.verify(data, signature: signature, publicKey: key)
             let build = Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0") ?? 0
-            guard manifest.build > build else { message = "You're up to date · build \(build)"; return }
-            if ready, manifest.build <= updateBuild { message = "Update ready · installs when you quit, or restart now."; return }
+            guard manifest.build > build else { message = "You're up to date · build \(build)"; return UpdateCheckNotice(title: "You're up to date", detail: "Clasp Studio \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "") is the latest version.") }
+            if ready, manifest.build <= updateBuild { if manually { postponeInstallation() }; message = preparedMessage; return UpdateCheckNotice(title: "An update is available", detail: "Clasp Studio \(manifest.version) is downloaded and verified. Would you like to update?", offeredBuild: updateBuild) }
             guard archiveAsset.size == manifest.size else { throw UpdateError.message("The release archive size does not match its signed manifest.") }
-            if try Bundle.main.bundleURL.resourceValues(forKeys: [.volumeIsReadOnlyKey]).volumeIsReadOnly == true { message = "Update available. Install Clasp Studio in Applications first."; return }
+            if try Bundle.main.bundleURL.resourceValues(forKeys: [.volumeIsReadOnlyKey]).volumeIsReadOnly == true { message = "Update available. Install Clasp Studio in Applications first."; return UpdateCheckNotice(title: "An update is available", detail: message) }
             message = "Downloading Clasp Studio \(manifest.version)…"
             let archive = try await transport.asset(archiveAsset)
             try UpdateVerification.verifyArchive(archive, manifest: manifest)
@@ -165,11 +173,21 @@ enum UpdateCredentials {
             let previous = prepared
             prepared = app; updateBuild = manifest.build; ready = true
             if let previous { try? FileManager.default.removeItem(at: previous.deletingLastPathComponent().deletingLastPathComponent()) }
-            message = "Update ready · installs when you quit, or restart now."
-        } catch { message = error.localizedDescription.contains("404") ? "Waiting for the first GitHub release." : error.localizedDescription }
+            if manually { postponeInstallation() }
+            message = preparedMessage
+            return UpdateCheckNotice(title: "An update is available", detail: "Clasp Studio \(manifest.version) is downloaded and verified. Would you like to update?", offeredBuild: updateBuild)
+        } catch { message = error.localizedDescription.contains("404") ? "Waiting for the first GitHub release." : error.localizedDescription; return UpdateCheckNotice(title: "Could not check for updates", detail: message) }
+    }
+    private var preparedMessage: String { shouldInstallOnQuit ? "Update ready · installs when you quit, or restart now." : "Update downloaded · choose Install when you're ready." }
+    func postponeInstallation() {
+        guard ready else { return }; preferences.set(updateBuild, forKey: "deferredUpdateBuild"); message = preparedMessage
+    }
+    @discardableResult func approveInstallation(build: Int? = nil) -> Bool {
+        guard ready, !working, build == nil || build == updateBuild else { return false }
+        preferences.removeObject(forKey: "deferredUpdateBuild"); message = preparedMessage; return true
     }
     func installOnQuit() throws {
-        guard ready, let prepared else { return }
+        guard shouldInstallOnQuit, let prepared else { return }
         guard let helper = Bundle.main.url(forAuxiliaryExecutable: "ClaspUpdateInstaller") else { throw UpdateError.message("The update installer is missing.") }
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
         let executable = cache.appendingPathComponent("installer-\(UUID().uuidString)")

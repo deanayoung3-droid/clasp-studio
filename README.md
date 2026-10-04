@@ -41,7 +41,7 @@ Clasp Studio combines a live camera, your selected microphone, a script-followin
 
 ## Import your own SVG
 
-Choose **Overlays → Import SVG**, or **Import SVG overlay…** in the video editor. The file becomes a reusable design immediately, preserving its shapes, outlined lettering, logos and transparent gradients. Its large embedded photos are replaced by the camera by default; smaller logos stay in the artwork. Translucent artwork receives a frosted backdrop, with **Backdrop blur** adjustable in the SVG inspector; text, logos and the transparent camera area stay sharp.
+Choose **Overlays → Import SVG**, or **Import SVG overlay…** in the video editor. The file becomes a reusable design immediately, preserving its shapes, outlined lettering, logos and transparent gradients. Its large embedded photos are replaced by the camera by default; smaller logos stay in the artwork. A subtle backdrop blur follows the SVG’s original transparency, preserving its gradient. Adjust **Backdrop blur** in the SVG inspector, or set it to zero for the exact original fade. Text and logos stay sharp.
 
 SVG artwork keeps its original proportions. **Fit** shows the entire design; **Fill** crops the edges to cover 16:9. Neither stretches the artwork. Previously saved SVG imports are corrected automatically.
 
@@ -167,6 +167,8 @@ The release workflow runs on pushes to `main` and can also be run manually from 
 Downloaded updates install when you quit, or through **Studio settings → GitHub updates → Install and restart**. The app protects active recording and export from interruption. Installation keeps a previous copy until the new app passes verification and restores it if replacement fails.
 
 Public releases download without a GitHub account, token or GitHub CLI. Automatic checks are enabled by default. If a newer release arrives while an update is already prepared, the app replaces the prepared update with the newer verified build. If the repository becomes private, the optional **GitHub access…** controls and signed-in GitHub CLI remain available.
+
+Use **Check for Updates** in the studio or editor header, Settings, or app menu to check immediately. A verified update offers **Update & Restart** or **Later**; Later holds that version until you approve it. During recording or export, an approved update waits until you quit.
 
 Versions before 2.0.4 assumed private repository access. Those installations need one update to 2.0.4 or later: their existing updater works if GitHub access is connected, or users can install the latest DMG once. Versions without an updater also require that one-time installation. Afterwards, future signed releases download automatically and install on quit. Turning off automatic updates is respected.
 

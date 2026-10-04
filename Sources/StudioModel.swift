@@ -541,6 +541,28 @@ enum PrompterMode: String, CaseIterable {
         project.background = .original
         AVCaptureDevice.showSystemUserInterface(.videoEffects)
     }
+    func checkForUpdates() {
+        guard !updater.working else { return }
+        Task { [self] in
+            let result = await updater.check(manually: true)
+            let alert = NSAlert(); alert.messageText = result.title; alert.informativeText = result.detail
+            if result.offeredBuild != nil {
+                let canRestart = !busy && videoEditor?.importing != true
+                alert.informativeText += canRestart ? " Your draft will be saved before restarting." : " Finish your current recording, export or import, then quit to install."
+                alert.addButton(withTitle: canRestart ? "Update & Restart" : "Update When I Quit"); alert.addButton(withTitle: "Later")
+            } else { alert.addButton(withTitle: "OK") }
+            let respond: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+                guard let self, let build = result.offeredBuild else { return }
+                guard response == .alertFirstButtonReturn else { self.updater.postponeInstallation(); return }
+                guard self.updater.approveInstallation(build: build) else { self.checkForUpdates(); return }
+                if self.busy || self.videoEditor?.importing == true { self.notice = "Update approved · installs when you finish and quit."; return }
+                self.updater.restartRequested = true; self.settingsOpen = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { NSApp.terminate(nil) }
+            }
+            if let window = NSApp.keyWindow ?? NSApp.mainWindow { alert.beginSheetModal(for: window, completionHandler: respond) }
+            else { respond(alert.runModal()) }
+        }
+    }
     func startRecording() {
         guard !busy else { return }
         takeAction = .edit

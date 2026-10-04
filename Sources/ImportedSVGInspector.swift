@@ -21,9 +21,9 @@ struct ImportedSVGInspector: View {
                 Text("The preview and exported video use the SVG’s proportions. Side space is removed; the artwork and camera opening keep their shape.").foregroundStyle(.secondary).lineSpacing(3)
                 HStack { Text("Artwork opacity"); Spacer(); Text("\(Int((model.overlay.artworkOpacity ?? 1) * 100))%").monospacedDigit() }
                 Slider(value: Binding(get: { model.overlay.artworkOpacity ?? 1 }, set: { value in model.editOverlay { $0.artworkOpacity = value } }), in: 0...1)
-                HStack { Text("Backdrop blur"); Spacer(); Text("\(Int(model.overlay.frostRadius ?? 40))").monospacedDigit() }
-                Slider(value: Binding(get: { model.overlay.frostRadius ?? 40 }, set: { value in model.editOverlay { $0.frostRadius = value } }), in: 0...60)
-                Text("Blurs the camera beneath translucent SVG artwork while keeping text, logos and the clear camera area sharp.").foregroundStyle(.secondary).lineSpacing(3)
+                HStack { Text("Backdrop blur"); Spacer(); Text("\(Int(model.overlay.frostRadius ?? 10))").monospacedDigit() }
+                Slider(value: Binding(get: { model.overlay.frostRadius ?? 10 }, set: { value in model.editOverlay { $0.frostRadius = value } }), in: 0...60)
+                Text("A gentle blur follows the original SVG gradient. Set to zero for the exact original fade.").foregroundStyle(.secondary).lineSpacing(3)
                 Toggle("Replace large photos with camera", isOn: Binding(get: { model.overlay.importedSVG?.replacePhotos ?? true }, set: { model.refreshImportedSVG(replacePhotos: $0) })).toggleStyle(.checkbox).disabled(model.importingSVG || model.busy)
                 Toggle("Remove solid canvas fill", isOn: Binding(get: { model.overlay.importedSVG?.removeCanvasFill ?? true }, set: { model.refreshImportedSVG(removeCanvasFill: $0) })).toggleStyle(.checkbox).disabled(model.importingSVG || model.busy)
                 Divider()

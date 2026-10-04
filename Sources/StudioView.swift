@@ -88,6 +88,7 @@ struct StudioView: View {
             Button { model.editOverlays() } label: { Label("Overlays", systemImage: "square.stack").font(.system(size: 11, weight: .medium)) }.buttonStyle(StudioButton())
             Button { customize() } label: { Label("Customize", systemImage: "slider.horizontal.3").font(.system(size: 11, weight: .medium)) }.buttonStyle(StudioButton()).help("Edit your broadcast headline, presenter and sponsors")
             Button { model.settingsOpen = true } label: { Image(systemName: "gearshape").frame(width: 20, height: 20) }.buttonStyle(.plain).foregroundStyle(muted).padding(.horizontal, 7).help("Studio settings").accessibilityLabel("Studio settings")
+            AppUpdateCheckButton(model: model, updater: model.updater).font(.system(size: 11)).buttonStyle(StudioButton())
             Button {
                 if model.busy { model.stopRecording() }
                 else { model.startRecording() }

@@ -71,7 +71,11 @@ extension StudioTests {
         var svgFrost = ImportedSVGGraphics.settings(svgDocument, mirror: false); svgFrost.overlay = nil
         let svgPixels = NSBitmapImageRep(cgImage: context.createCGImage(BroadcastFrameRenderer(svgFrost).compose(checker), from: bounds)!)
         let lower = svgPixels.colorAt(x: 500, y: 620)!.redComponent, upper = svgPixels.colorAt(x: 500, y: 200)!.redComponent
-        check(lower > 0.25 && lower < 0.75 && (upper < 0.1 || upper > 0.9), "Imported SVG gradients blur their backdrop strongly while the transparent camera area stays sharp")
+        let originalPixels = NSBitmapImageRep(cgImage: context.createCGImage(checker, from: bounds)!)
+        let originalLower = originalPixels.colorAt(x: 500, y: 620)!.redComponent
+        let neighbor = svgPixels.colorAt(x: 508, y: 620)!.redComponent
+        check(abs(lower - originalLower) > 0.01 && abs(lower - neighbor) > 0.45 && (upper < 0.1 || upper > 0.9), "SVG backdrop blur follows its natural alpha, preserving gradient detail and the clear camera area")
+        check(svgFrost.frostRadius == 10, "Imported SVGs use a subtle blur by default")
         svgDocument.frostRadius = 0
         check(ImportedSVGGraphics.settings(svgDocument, mirror: false).frostRadius == 0, "Imported overlay backdrop blur can be disabled without changing its artwork")
         try await svgOverlayChecks()

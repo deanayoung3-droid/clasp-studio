@@ -9,7 +9,6 @@ struct RenderSettings: @unchecked Sendable {
     var animation: BroadcastAnimation?
     var frostMask: CGImage?
     var frostRadius: Double = 0
-    var frostMaskGain: Double = 1
     var referenceCard: CGImage?
     var outputRect = CGRect(x: 0, y: 0, width: 1280, height: 720)
 }

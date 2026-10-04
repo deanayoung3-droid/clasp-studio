@@ -11,13 +11,13 @@ struct UpdateSettingsView: View {
             Toggle("Automatically check and download updates", isOn: $updater.automatic).toggleStyle(.checkbox).font(.system(size: 11))
             Text("Checks at launch and every hour, and catches up after your Mac wakes. Downloaded updates install when you quit. Recording and saving always finish first.").font(.system(size: 10)).foregroundStyle(.secondary)
             HStack {
-                Button(updater.working ? "Checking…" : "Check for updates") { Task { await updater.check() } }.disabled(updater.working)
+                AppUpdateCheckButton(model: model, updater: updater)
                 if updater.ready { Button("Install and restart") {
-                    guard !model.busy else { return }
+                    guard !model.busy, model.videoEditor?.importing != true, updater.approveInstallation() else { return }
                     updater.restartRequested = true; model.settingsOpen = false
                     // Finish dismissing the modal sheet before requesting app termination.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { NSApp.terminate(nil) }
-                }.disabled(model.busy).keyboardShortcut(.defaultAction) }
+                }.disabled(model.busy || model.videoEditor?.importing == true || updater.working).keyboardShortcut(.defaultAction) }
                 Spacer()
                 Button("GitHub access…") { connect.toggle() }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
             }.controlSize(.small)
@@ -27,5 +27,12 @@ struct UpdateSettingsView: View {
                 HStack { Button("Save to Keychain") { updater.saveToken(token); token = "" }.disabled(token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty); if updater.hasToken { Button("Remove saved access") { updater.removeToken() } }; Link("Create GitHub token", destination: URL(string: "https://github.com/settings/personal-access-tokens/new")!) }.font(.system(size: 10)).controlSize(.small)
             }
         }.padding(15).background(Color.white.opacity(0.045)).clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+}
+struct AppUpdateCheckButton: View {
+    @ObservedObject var model: StudioModel
+    @ObservedObject var updater: AppUpdater
+    var body: some View {
+        Button { model.checkForUpdates() } label: { Label(updater.working ? "Checking…" : "Check for Updates", systemImage: "arrow.down.circle") }.disabled(updater.working).help("Check GitHub and choose whether to install a new version")
     }
 }
