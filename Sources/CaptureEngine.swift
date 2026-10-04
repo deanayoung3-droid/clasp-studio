@@ -22,6 +22,7 @@ final class CaptureEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private var hasRecordedVideo = false
     private var recordingURL: URL?
     private var cleanRecording = false
+    private var recordingBounds = CGRect(x: 0, y: 0, width: 1280, height: 720)
     private var hasAudio = false
     private var captureDevice: AVCaptureDevice?
     private var nativeBackground = false
@@ -101,11 +102,12 @@ final class CaptureEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             guard self.writer == nil else { self.onRecordingFinished?(nil, "A recording is already active."); return }
             do {
                 let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
-                let video = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 1280, AVVideoHeightKey: 720, AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 8_000_000, AVVideoExpectedSourceFrameRateKey: 30]])
+                self.recordingBounds = cleanSource ? CGRect(x: 0, y: 0, width: 1280, height: 720) : CGRect(origin: .zero, size: self.settings.outputRect.size)
+                let video = AVAssetWriterInput(mediaType: .video, outputSettings: [AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: Int(self.recordingBounds.width), AVVideoHeightKey: Int(self.recordingBounds.height), AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: 8_000_000, AVVideoExpectedSourceFrameRateKey: 30]])
                 video.expectsMediaDataInRealTime = true
                 guard writer.canAdd(video) else { throw StudioError.message("The video encoder is unavailable.") }
                 writer.add(video)
-                self.adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferWidthKey as String: 1280, kCVPixelBufferHeightKey as String: 720, kCVPixelBufferIOSurfacePropertiesKey as String: [:]])
+                self.adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: video, sourcePixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferWidthKey as String: Int(self.recordingBounds.width), kCVPixelBufferHeightKey as String: Int(self.recordingBounds.height), kCVPixelBufferIOSurfacePropertiesKey as String: [:]])
                 self.audioInput = nil
                 if self.hasAudio || syntheticAudio {
                     let audio = AVAssetWriterInput(mediaType: .audio, outputSettings: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 48000, AVNumberOfChannelsKey: 1, AVEncoderBitRateKey: 128000])
@@ -170,7 +172,7 @@ final class CaptureEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 if input.isReadyForMoreMediaData, let pool = adaptor.pixelBufferPool {
                     var buffer: CVPixelBuffer?
                     if CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer) == kCVReturnSuccess, let buffer {
-                        let recordedFrame = cleanRecording ? BroadcastFrameRenderer.fit(source, to: CGRect(x: 0, y: 0, width: 1280, height: 720)) : frame
+                        let recordedFrame = cleanRecording ? BroadcastFrameRenderer.fit(source, to: recordingBounds) : BroadcastFrameRenderer.fit(renderer.cropForOutput(frame), to: recordingBounds)
                         context.render(recordedFrame, to: buffer)
                         if adaptor.append(buffer, withPresentationTime: pts) {
                             if !hasRecordedVideo { hasRecordedVideo = true; onRecordingStarted?() }
@@ -179,7 +181,7 @@ final class CaptureEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
                 }
             }
         }
-        onFrame?(frame)
+        onFrame?(renderer.cropForOutput(frame))
     }
     func processAudio(_ sample: CMSampleBuffer) {
         if let input = audioInput, let startTime, CMSampleBufferGetPresentationTimeStamp(sample) >= startTime, input.isReadyForMoreMediaData { if !input.append(sample), let error = writer?.error { onWarning?(error.localizedDescription) } }
@@ -207,7 +209,7 @@ final class CaptureEngine: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
             timer.schedule(deadline: .now(), repeating: 1.0 / 30, leeway: .milliseconds(5))
             timer.setEventHandler { [weak self] in
                 guard let self, !self.session.isRunning else { return }
-                autoreleasepool { self.onFrame?(self.compose(source)) }
+                autoreleasepool { self.onFrame?(self.renderer.cropForOutput(self.compose(source))) }
             }
             self.demoTimer = timer; timer.resume()
         }

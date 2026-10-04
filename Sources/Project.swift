@@ -44,6 +44,8 @@ struct StudioProject: Codable {
     var overlayLibrary: [OverlayDocument]?
     var selectedOverlayID: UUID?
     var overlayLibraryRevision: Int?
+    var referenceImages: [BroadcastReferenceImage]?
+    var reference: ReferencePresentation?
     var wordsPerMinute = 135.0
     var sections = ScriptParser.parse("""
     # Intro

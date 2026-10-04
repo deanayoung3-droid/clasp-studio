@@ -22,7 +22,7 @@ jobs:
           import os, plistlib
           with open('Info.plist', 'rb') as f:
               info = plistlib.load(f)
-          info['CFBundleVersion'] = str(1000 + int(os.environ['UPDATE_BUILD']))
+          info['CFBundleVersion'] = str(10000 + int(os.environ['UPDATE_BUILD']))
           with open('Info.plist', 'wb') as f:
               plistlib.dump(info, f)
           PY
@@ -64,4 +64,4 @@ jobs:
               f.write("Install with the DMG, or let an installed Clasp Studio app receive the signed update. Recording and saving finish before an update is installed.\n\n")
               f.write(f"Source commit: {os.environ['RELEASE_SHA']}\n")
           PY
-          gh release create "build-${RELEASE_RUN}" release/Clasp-Studio.zip release/Clasp-Studio.dmg release/update-manifest.json release/update-manifest.sig --repo "$REPOSITORY" --target "$RELEASE_SHA" --title "Clasp Studio · build $((1000 + RELEASE_RUN))" --notes-file release/release-notes.md --latest
+          gh release create "build-${RELEASE_RUN}" release/Clasp-Studio.zip release/Clasp-Studio.dmg release/update-manifest.json release/update-manifest.sig --repo "$REPOSITORY" --target "$RELEASE_SHA" --title "Clasp Studio · build $((10000 + RELEASE_RUN))" --notes-file release/release-notes.md --latest

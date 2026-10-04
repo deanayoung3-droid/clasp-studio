@@ -46,6 +46,8 @@ struct EditClip: Identifiable, Codable, Equatable {
     var animationOffset: Double?
     var animationVolume: Double?
     var animationOpacity: Double?
+    var referenceOverride: Bool?
+    var reference: ReferencePresentation?
     var safeSpeed: Double { min(4, max(0.25, speed?.isFinite == true ? speed! : 1)) }
     var duration: Double { max(0, end - start) / safeSpeed }
 }
@@ -58,6 +60,8 @@ struct VideoEditDocument: Codable {
     var media: [EditMedia] = []
     var clips: [EditClip] = []
     var duration: Double { clips.reduce(0) { $0 + $1.duration } }
+    var outputRect: CGRect { BroadcastGraphics.outputRect(broadcast) }
+    var outputAspectRatio: CGFloat { outputRect.width / outputRect.height }
     func start(of id: UUID) -> Double { clips.prefix(while: { $0.id != id }).reduce(0) { $0 + $1.duration } }
     func clip(at time: Double) -> EditClip? {
         var cursor = 0.0
@@ -80,6 +84,8 @@ struct VideoEditDocument: Codable {
                   clip.start.isFinite, clip.end.isFinite, clip.start >= 0, clip.duration >= 1.0 / 30, clip.end > clip.start, clip.end <= source.duration + 0.02 else { throw StudioError.message("A clip has an invalid source range. Adjust its in and out points.") }
             if !allowIncomplete, clip.layout != .presenter, !media.contains(where: { $0.id == clip.secondaryID && $0.kind != .animation }) { throw StudioError.message("Choose an image or guest video for the \(clip.layout.rawValue.lowercased()) clip.") }
             if !allowIncomplete, clip.transition == .library, !media.contains(where: { $0.id == clip.animationID && $0.kind == .animation }) { throw StudioError.message("Choose an animation for this transition.") }
+            let reference = clip.referenceOverride == true ? clip.reference : broadcast.reference
+            if !allowIncomplete, let reference, reference.visible, !((broadcast.referenceImages ?? []).contains(where: { $0.id == reference.imageID && !$0.png.isEmpty })) { throw StudioError.message("The reference image is missing. Replace it or turn off its On air switch before exporting.") }
         }
     }
 }

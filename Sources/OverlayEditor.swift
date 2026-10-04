@@ -47,7 +47,7 @@ struct OverlayEditor: View {
                 }.frame(width: 195).background(Color(white: 0.06))
                 Divider().overlay(Color.white.opacity(0.08))
                 VStack(spacing: 0) {
-                    HStack { Text("Canvas"); Spacer(); Text("16:9").foregroundStyle(.secondary) }.font(.system(size: 10)).padding(.horizontal, 16).frame(height: 31)
+                    HStack { Text("Canvas"); Spacer(); Text(model.outputDimensions).foregroundStyle(.secondary) }.font(.system(size: 10)).padding(.horizontal, 16).frame(height: 31)
                     Spacer(minLength: 12)
                     componentCanvas.padding(.horizontal, 16)
                     Spacer(minLength: 15)
@@ -88,18 +88,21 @@ struct OverlayEditor: View {
     }
     private var componentCanvas: some View {
         GeometryReader { geometry in
-            let scale = geometry.size.width / 1280
+            let output = model.outputRect
+            let scale = geometry.size.width / output.width
             ZStack(alignment: .topLeading) {
                 if let preview = canvasPreview { Image(nsImage: preview).resizable().scaledToFit() }
                 else { Color(white: 0.14) }
                 ForEach((model.overlay.template == .custom ? [OverlayComponent.camera] : OverlayComponent.allCases).filter { !(model.overlay.template == .law && $0 == .date) }) { component in
-                    let rect = model.overlay.zone(component)
-                    Rectangle().fill(Color.white.opacity(0.001)).frame(width: rect.width * scale, height: rect.height * scale).position(x: rect.midX * scale, y: (720 - rect.midY) * scale).onTapGesture { selected = component; tab = component == .sponsors ? "Sponsors" : "Components" }.accessibilityLabel("Edit \(component.name)")
+                    let region = model.overlay.zone(component).intersection(output)
+                let rect = region.isNull ? CGRect.zero : region
+                    Rectangle().fill(Color.white.opacity(0.001)).frame(width: rect.width * scale, height: rect.height * scale).position(x: (rect.midX - output.minX) * scale, y: (output.maxY - rect.midY) * scale).onTapGesture { selected = component; tab = component == .sponsors ? "Sponsors" : "Components" }.accessibilityLabel("Edit \(component.name)")
                 }
-                let rect = model.overlay.zone(selected)
-                Rectangle().stroke(Color(red: 0.04, green: 0.61, blue: 0.96), lineWidth: 1.5).frame(width: rect.width * scale, height: rect.height * scale).position(x: rect.midX * scale, y: (720 - rect.midY) * scale).allowsHitTesting(false)
+                let region = model.overlay.zone(selected).intersection(output)
+                let rect = region.isNull ? CGRect.zero : region
+                Rectangle().stroke(Color(red: 0.04, green: 0.61, blue: 0.96), lineWidth: 1.5).frame(width: rect.width * scale, height: rect.height * scale).position(x: (rect.midX - output.minX) * scale, y: (output.maxY - rect.midY) * scale).allowsHitTesting(false)
             }.clipped()
-        }.aspectRatio(16 / 9, contentMode: .fit).background(.black).overlay(Rectangle().stroke(.white.opacity(0.08)))
+        }.aspectRatio(model.outputAspectRatio, contentMode: .fit).background(.black).overlay(Rectangle().stroke(.white.opacity(0.08)))
     }
     private func scheduleRefresh() {
         refreshTask?.cancel()
@@ -116,9 +119,9 @@ struct OverlayEditor: View {
         for document in model.project.overlayLibrary ?? [] where images[document.id] == nil || document.id == model.overlay.id {
             var project = model.project; project.graphics = true; project.selectedOverlayID = document.id
             let renderer = BroadcastFrameRenderer(BroadcastGraphics.renderSettings(project, activeIndex: model.activeSection))
-            let frame = renderer.compose(source, at: 0).transformed(by: CGAffineTransform(scaleX: 0.6, y: 0.6))
-            if let image = previewContext.createCGImage(frame, from: CGRect(x: 0, y: 0, width: 768, height: 432)) {
-                let native = NSImage(cgImage: image, size: NSSize(width: 768, height: 432))
+            let frame = renderer.cropForOutput(renderer.compose(source, at: 0)).transformed(by: CGAffineTransform(scaleX: 0.6, y: 0.6))
+            if let image = previewContext.createCGImage(frame, from: frame.extent) {
+                let native = NSImage(cgImage: image, size: frame.extent.size)
                 images[document.id] = native
                 if document.id == model.overlay.id { canvasPreview = native }
             }
@@ -131,7 +134,7 @@ struct OverlayEditor: View {
                 ForEach(model.project.overlayLibrary ?? []) { document in
                     Button { model.selectOverlay(document.id) } label: {
                         VStack(alignment: .leading, spacing: 8) {
-                            if let image = thumbnails[document.id] { Image(nsImage: image).resizable().aspectRatio(16 / 9, contentMode: .fit).background(Color(white: 0.13)).clipShape(RoundedRectangle(cornerRadius: 5)) }
+                            if let image = thumbnails[document.id] { Image(nsImage: image).resizable().scaledToFit().background(Color(white: 0.13)).clipShape(RoundedRectangle(cornerRadius: 5)) }
                             HStack { Text(document.name).font(.system(size: 11, weight: .medium)).lineLimit(2); Spacer(); if document.id == model.project.selectedOverlayID { Image(systemName: "checkmark.circle.fill").font(.system(size: 12)) } }
                         }.padding(10).background(document.id == model.project.selectedOverlayID ? Color.white.opacity(0.08) : .clear).clipShape(RoundedRectangle(cornerRadius: 7)).overlay(RoundedRectangle(cornerRadius: 7).stroke(document.id == model.project.selectedOverlayID ? Color.white.opacity(0.6) : Color.white.opacity(0.1)))
                     }.buttonStyle(.plain)

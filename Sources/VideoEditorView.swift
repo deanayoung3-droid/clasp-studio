@@ -117,7 +117,7 @@ struct VideoEditorView: View {
     }
     private var canvas: some View {
         VStack(spacing: 0) {
-            HStack { Text("Preview"); Spacer(); Text("16:9").foregroundStyle(.secondary) }.font(.system(size: 10)).padding(.horizontal, 18).frame(height: 30)
+            HStack { Text("Preview"); Spacer(); Text("\(Int(model.document.outputRect.width)) × \(Int(model.document.outputRect.height))").foregroundStyle(.secondary) }.font(.system(size: 10)).padding(.horizontal, 18).frame(height: 30)
             GeometryReader { geometry in
                 ZStack(alignment: .bottom) {
                     ZStack {
@@ -126,7 +126,7 @@ struct VideoEditorView: View {
                         if model.preparing { ProgressView("Preparing video…").font(.system(size: 11)).padding(14).background(editPanel.opacity(0.95)).clipShape(RoundedRectangle(cornerRadius: 6)) }
                         else if model.document.clips.isEmpty { VStack(spacing: 12) { Image(systemName: "film.stack").font(.system(size: 27, weight: .light)); Text("Start with a video").font(.system(size: 17)); Button("Import footage…") { model.importMedia(.video) } }.foregroundStyle(.secondary) }
                         else if let failure = model.previewFailure { VStack(spacing: 10) { Text("Preview couldn’t load").fontWeight(.medium); Text(failure).font(.system(size: 11)); Button("Retry") { model.scheduleRebuild() } }.padding(24).background(editPanel).clipShape(RoundedRectangle(cornerRadius: 7)) }
-                    }.aspectRatio(16 / 9, contentMode: .fit).background(.black).frame(maxWidth: .infinity, maxHeight: .infinity).padding(.horizontal, 10).padding(.bottom, 22)
+                    }.aspectRatio(model.document.outputAspectRatio, contentMode: .fit).background(.black).frame(maxWidth: .infinity, maxHeight: .infinity).padding(.horizontal, 10).padding(.bottom, 22)
                     canvasTools.padding(.bottom, 8)
                 }.frame(width: geometry.size.width, height: geometry.size.height)
             }
@@ -212,6 +212,13 @@ struct VideoEditorView: View {
                 Toggle("Use supporting audio", isOn: clip(\.secondaryAudio, fallback: false)).toggleStyle(.switch).controlSize(.mini)
                 Text(selected.secondaryID == nil ? "Add an image or video to complete this layout." : "Short supporting videos loop to fill the shot.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(4)
             }
+            Divider().padding(.vertical, 5)
+            let reference = selected.referenceOverride == true ? selected.reference : model.document.broadcast.reference
+            ReferenceImageSettings(image: model.document.broadcast.referenceImages?.first(where: { $0.id == reference?.imageID }), presentation: Binding(get: {
+                guard let clip = model.selected else { return nil }
+                return clip.referenceOverride == true ? clip.reference : model.document.broadcast.reference
+            }, set: { value in model.changeClip { $0.referenceOverride = true; $0.reference = value } }), choose: { model.importReferenceImage() }, busy: model.importing || model.isExporting)
+            Text("Split the timeline where the image should appear or disappear, then show or hide the card for that shot.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(4)
         }
     }
     private func graphicsControls(_ selected: EditClip) -> some View {
@@ -293,7 +300,7 @@ struct VideoEditorView: View {
                                 EditTimelineClip(model: model, clip: item, index: index, zoom: zoom, accent: editAccent) { target = .footage }.frame(width: max(1, item.duration * zoom), height: 42)
                             } }
                             HStack(spacing: 0) { ForEach(model.document.clips) { item in layerClip(item, layer: .graphics).frame(width: max(1, item.duration * zoom), height: 28) } }
-                            if model.document.clips.contains(where: { $0.layout != .presenter }) { HStack(spacing: 0) { ForEach(model.document.clips) { item in layerClip(item, layer: .picture).frame(width: max(1, item.duration * zoom), height: 28) } } }
+                            if model.document.clips.contains(where: { $0.layout != .presenter || referenceShown($0) }) { HStack(spacing: 0) { ForEach(model.document.clips) { item in layerClip(item, layer: .picture).frame(width: max(1, item.duration * zoom), height: 28) } } }
                             if model.document.clips.contains(where: { $0.transition != .cut }) { HStack(spacing: 0) { ForEach(model.document.clips) { item in layerClip(item, layer: .transition).frame(width: max(1, item.duration * zoom), height: 28) } } }
                         }.frame(width: width, alignment: .leading)
                         Rectangle().fill(editAccent).frame(width: 1, height: 195).offset(x: min(width, model.position * zoom), y: 0).allowsHitTesting(false)
@@ -315,11 +322,12 @@ struct VideoEditorView: View {
         }.frame(width: width, height: 33).contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onChanged { value in model.seek(value.location.x / zoom) }).accessibilityLabel("Timeline. Drag to move the playhead.")
     }
     private func layerClip(_ item: EditClip, layer: EditInspectorTarget) -> some View {
-        let visible = layer == .graphics ? item.graphics : layer == .picture ? item.layout != .presenter : item.transition != .cut
+        let visible = layer == .graphics ? item.graphics : layer == .picture ? item.layout != .presenter || referenceShown(item) : item.transition != .cut
         let color = layer == .graphics ? Color.white : editAccent
         if layer == .transition { return AnyView(transitionBar(item)) }
-        return AnyView(HStack(spacing: 6) { if visible { Image(systemName: layer.symbol); Text(layer == .graphics ? "Overlay" : layer == .picture ? item.layout.rawValue : item.transition.rawValue).lineLimit(1) }; Spacer(minLength: 0) }.font(.system(size: 9)).padding(.horizontal, 7).background(visible ? color.opacity(0.08) : .clear).clipShape(RoundedRectangle(cornerRadius: 5)).overlay(RoundedRectangle(cornerRadius: 5).stroke(visible ? color.opacity(0.3) : .clear)).padding(.trailing, 3).clipped().onTapGesture { model.select(item.id); target = layer })
+        return AnyView(HStack(spacing: 6) { if visible { Image(systemName: layer.symbol); Text(layer == .graphics ? "Overlay" : layer == .picture ? (item.layout == .presenter && referenceShown(item) ? "Reference image" : item.layout.rawValue) : item.transition.rawValue).lineLimit(1) }; Spacer(minLength: 0) }.font(.system(size: 9)).padding(.horizontal, 7).background(visible ? color.opacity(0.08) : .clear).clipShape(RoundedRectangle(cornerRadius: 5)).overlay(RoundedRectangle(cornerRadius: 5).stroke(visible ? color.opacity(0.3) : .clear)).padding(.trailing, 3).clipped().onTapGesture { model.select(item.id); target = layer })
     }
+    private func referenceShown(_ clip: EditClip) -> Bool { (clip.referenceOverride == true ? clip.reference : model.document.broadcast.reference)?.visible == true }
     private func transitionBar(_ item: EditClip) -> some View {
         let offset = item.transition == .library ? min(max(0, item.animationOffset ?? 0), max(0, item.duration - 1.0 / 30)) : 0
         let media = model.document.media.first(where: { $0.id == item.animationID })

@@ -8,7 +8,9 @@ struct EditShotRenderer: @unchecked Sendable {
     init(clip: EditClip, renderer: BroadcastFrameRenderer) { self.clip = clip; self.renderer = renderer }
     init(clip: EditClip, project: StudioProject, previousSection: Int? = nil, tickerEpoch: Double? = nil) {
         self.clip = clip
+        let outputRect = BroadcastGraphics.outputRect(project)
         var project = project; project.graphics = clip.graphics; project.mirror = clip.mirror
+        if clip.referenceOverride == true { project.reference = clip.reference }
         if let id = clip.overlayID { project.selectedOverlayID = id }
         if !clip.topics {
             let docID = BroadcastGraphics.document(project).id
@@ -32,6 +34,7 @@ struct EditShotRenderer: @unchecked Sendable {
             settings.cameraRect = wide
             settings.cameraMask = BroadcastGraphics.image { ctx in BroadcastGraphics.rounded(ctx, wide, 14, .white) }
         }
+        settings.outputRect = outputRect
         renderer = BroadcastFrameRenderer(settings)
     }
     func frame(primary: CIImage, secondary: CIImage?, at time: Double) -> CIImage {
@@ -149,7 +152,8 @@ final class EditVideoCompositor: NSObject, AVVideoCompositing, @unchecked Sendab
                 let fitted = animation.transformed(by: CGAffineTransform(translationX: -extent.minX, y: -extent.minY)).transformed(by: CGAffineTransform(scaleX: scale, y: scale))
                 frame = fitted.transformed(by: CGAffineTransform(translationX: 640 - fitted.extent.width / 2, y: 360 - fitted.extent.height / 2)).applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: min(1, max(0, clip.animationOpacity ?? 1)))]).composited(over: frame)
             }
-            context.render(frame.cropped(to: CGRect(x: 0, y: 0, width: 1280, height: 720)), to: output, bounds: CGRect(x: 0, y: 0, width: 1280, height: 720), colorSpace: CGColorSpaceCreateDeviceRGB())
+            let cropped = instruction.shot.renderer.cropForOutput(frame)
+            context.render(cropped, to: output, bounds: cropped.extent, colorSpace: CGColorSpaceCreateDeviceRGB())
             lock.lock(); let canceledAfterRender = token != generation; lock.unlock()
             if canceledAfterRender { request.finishCancelledRequest() } else { request.finish(withComposedVideoFrame: output) }
         } }

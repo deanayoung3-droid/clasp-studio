@@ -35,12 +35,26 @@ extension StudioTests {
         check(filled.camera.rect == CGRect(x: 0, y: 0, width: 1280, height: 720) && fillPixels.colorAt(x: 390, y: 360)!.alphaComponent > 0.9 && fillPixels.colorAt(x: 640, y: 610)!.alphaComponent > 0.9, "Fill covers the broadcast by cropping, without stretching SVG geometry")
         let portrait = try await SVGOverlayImport.render(Data("<svg xmlns='http://www.w3.org/2000/svg' viewBox='10 20 100 200'><rect x='10' y='20' width='100' height='200' fill='white'/><rect id='camera' x='10' y='20' width='100' height='200'/></svg>".utf8))
         check(portrait.camera.rect == CGRect(x: 460, y: 0, width: 360, height: 720) && NSBitmapImageRep(data: portrait.png)!.colorAt(x: 640, y: 360)!.alphaComponent < 0.01, "Portrait SVGs and nonzero viewBox origins retain their camera alignment and remove solid canvas fills")
-        var legacy = fitted; legacy.fit = nil; legacy.camera = SVGCameraWindow()
+        var legacy = fitted; legacy.id = UUID(); legacy.fit = nil; legacy.camera = SVGCameraWindow()
         let stretched = BroadcastGraphics.image { ctx in BroadcastGraphics.fill(ctx, CGRect(x: 0, y: 0, width: 1280, height: 720), .red) }!
         legacy.png = NSBitmapImageRep(cgImage: stretched).representation(using: .png, properties: [:])!
         var legacyDoc = OverlayDocument.presets(StudioProject())[0]; legacyDoc.template = .custom; legacyDoc.importedSVG = legacy
         let legacySettings = ImportedSVGGraphics.settings(legacyDoc, mirror: false), legacyPixels = NSBitmapImageRep(cgImage: legacySettings.overlay!)
-        check(legacySettings.cameraRect == CGRect(x: 280, y: 0, width: 720, height: 720) && legacyPixels.colorAt(x: 100, y: 360)!.alphaComponent < 0.01 && legacyPixels.colorAt(x: 300, y: 360)!.redComponent > 0.9, "Previously saved stretched SVGs recover their original aspect ratio without reimporting")
+        check(legacySettings.cameraRect == CGRect(x: 280, y: 0, width: 720, height: 720) && legacyPixels.colorAt(x: 300, y: 360)!.redComponent > 0.9, "Previously saved stretched SVGs recover their original aspect ratio with the original camera opening")
+        var squareDoc = legacyDoc; squareDoc.importedSVG = fitted
+        check(ImportedSVGGraphics.settings(squareDoc, mirror: false).cameraRect == CGRect(x: 280, y: 0, width: 720, height: 720), "SVG camera opening preserves its original proportions")
+        var squareProject = StudioProject(); squareProject.overlayLibrary = [squareDoc]; squareProject.selectedOverlayID = squareDoc.id
+        let squareSettings = BroadcastGraphics.renderSettings(squareProject, activeIndex: 0), squareRenderer = BroadcastFrameRenderer(squareSettings)
+        let blueSquare = CIImage(color: CIColor(red: 0, green: 0.6, blue: 1)).cropped(to: CGRect(x: 0, y: 0, width: 1280, height: 720))
+        let cropped = squareRenderer.cropForOutput(squareRenderer.compose(blueSquare, at: 0))
+        check(squareSettings.outputRect == CGRect(x: 280, y: 0, width: 720, height: 720) && cropped.extent == CGRect(x: 0, y: 0, width: 720, height: 720), "Output crops to the SVG canvas instead of filling side margins")
+        let squarePixels = NSBitmapImageRep(cgImage: CIContext().createCGImage(cropped, from: cropped.extent)!)
+        check(squarePixels.colorAt(x: 1, y: 360)!.blueComponent > 0.9 && squarePixels.colorAt(x: 719, y: 360)!.blueComponent > 0.9, "Cropped output has camera at both edges without black bars")
+        squareProject.overlayLibrary?[0].cropToSVG = false
+        check(BroadcastGraphics.outputRect(squareProject).width == 1280, "The optional 16:9 canvas remains available")
+        let narrowFade = try await SVGOverlayImport.render(Data(svg.replacingOccurrences(of: "width=\"1280\" height=\"720\" viewBox=\"0 0 1280 720\"", with: "width=\"1000\" height=\"720\" viewBox=\"0 0 1000 720\"").utf8))
+        squareProject.overlayLibrary?[0].cropToSVG = nil; squareProject.overlayLibrary?[0].importedSVG = narrowFade
+        check(BroadcastGraphics.outputRect(squareProject) == CGRect(x: 140, y: 0, width: 1000, height: 720), "Narrow SVG output removes only the transparent side space")
         var doc = OverlayDocument.presets(StudioProject())[0]; doc.template = .custom; doc.importedSVG = asset
         let encoded = try JSONEncoder().encode(doc), restored = try JSONDecoder().decode(OverlayDocument.self, from: encoded)
         check(restored.importedSVG == asset, "Imported SVG artwork and camera settings persist in projects and drafts")
@@ -57,9 +71,10 @@ extension StudioTests {
         doc.cameraWindow = SVGCameraWindow(x: 0.1, y: 0.1, width: 0.5, height: 0.5, radius: 12); doc.cutCameraWindow = true
         let adjusted = ImportedSVGGraphics.settings(doc, mirror: false)
         check(adjusted.cameraRect == CGRect(x: 128, y: 288, width: 640, height: 360), "Imported SVG camera windows can be resized and repositioned independently")
+        let inspectorDocument = doc
         await MainActor.run {
             let model = StudioModel(persist: false)
-            var nearFull = doc; nearFull.cameraWindow = SVGCameraWindow(height: 0.9995)
+            var nearFull = inspectorDocument; nearFull.cameraWindow = SVGCameraWindow(height: 0.9995)
             model.project.overlayLibrary?.append(nearFull); model.project.selectedOverlayID = nearFull.id
             let view = NSHostingView(rootView: ImportedSVGInspector(model: model)); view.frame = CGRect(x: 0, y: 0, width: 265, height: 740); view.layoutSubtreeIfNeeded()
             if let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) { view.cacheDisplay(in: view.bounds, to: bitmap); check(bitmap.pixelsWide > 0, "Nearly full-frame SVG camera controls render without invalid slider ranges") }

@@ -93,7 +93,9 @@ enum EditCompositionBuilder {
                     mainMix.setVolume(volume, at: time(cursor + offset + animationDuration)); guestMix.setVolume(clip.secondaryAudio ? 1 : 0, at: time(cursor + offset + animationDuration))
                 }
             }
-            let key = "\(clip.overlayID?.uuidString ?? "default")-\(clip.graphics)-\(clip.topics)-\(clip.mirror)-\(clip.section)"
+            let reference = clip.referenceOverride == true ? clip.reference : document.broadcast.reference
+            let referenceKey = "\(reference?.imageID.uuidString ?? "none")-\(reference?.visible ?? false)-\(reference?.side.rawValue ?? "")-\(reference?.safeWidth ?? 0)-\(reference?.caption ?? "")"
+            let key = "\(clip.overlayID?.uuidString ?? "default")-\(clip.graphics)-\(clip.topics)-\(clip.mirror)-\(clip.section)-\(referenceKey)"
             let previousSection = index > 0 ? document.clips[index - 1].section : nil
             let localDesign = document.broadcast.overlayLibrary?.first(where: { $0.id == clip.overlayID }) ?? BroadcastGraphics.document(document.broadcast)
             let scopedKey = key + (localDesign.template == .ticker ? "-\(cursor)-\(previousSection ?? -1)" : "")
@@ -117,7 +119,7 @@ enum EditCompositionBuilder {
         let populatedAudio = Set([primaryAudio, secondaryAudio, animationAudio].filter { !$0.segments.isEmpty }.map(\.trackID))
         for track in [primaryAudio, secondaryAudio, animationAudio, secondary, animation] where track.segments.isEmpty { composition.removeTrack(track) }
         let video = AVMutableVideoComposition(); video.customVideoCompositorClass = EditVideoCompositor.self
-        video.renderSize = CGSize(width: 1280, height: 720); video.frameDuration = CMTime(value: 1, timescale: 30); video.instructions = instructions
+        video.renderSize = document.outputRect.size; video.frameDuration = CMTime(value: 1, timescale: 30); video.instructions = instructions
         let audioMix = AVMutableAudioMix(); audioMix.inputParameters = [mainMix, guestMix, animationMix].filter { populatedAudio.contains($0.trackID) }
         return EditCompositionResult(composition: composition, video: video, audio: audioMix)
     }

@@ -9,6 +9,8 @@ struct RenderSettings: @unchecked Sendable {
     var animation: BroadcastAnimation?
     var frostMask: CGImage?
     var frostRadius: Double = 0
+    var referenceCard: CGImage?
+    var outputRect = CGRect(x: 0, y: 0, width: 1280, height: 720)
 }
 enum BroadcastGraphics {
     static let width = 1280
@@ -75,10 +77,24 @@ enum BroadcastGraphics {
         let library = project.overlayLibrary ?? OverlayDocument.presets(project)
         return library.first(where: { $0.id == project.selectedOverlayID }) ?? library.first ?? OverlayDocument.presets(project)[0]
     }
+    static func outputRect(_ project: StudioProject) -> CGRect {
+        let doc = document(project), full = CGRect(x: 0, y: 0, width: 1280, height: 720)
+        guard doc.template == .custom, doc.cropToSVG != false, let asset = doc.importedSVG, asset.fit != .fill else { return full }
+        let canvas = ImportedSVGGraphics.legacyArtworkRect(asset).intersection(full)
+        // Even, integral dimensions are required by H.264. Crop less than two
+        // pixels of transparent canvas padding; never rescale the artwork.
+        let width = max(2, floor(canvas.width / 2) * 2), height = max(2, floor(canvas.height / 2) * 2)
+        return CGRect(x: round(canvas.midX - width / 2), y: round(canvas.midY - height / 2), width: width, height: height)
+    }
     static func renderSettings(_ project: StudioProject, activeIndex: Int, at date: Date = Date(), epoch: Double = 0, previousSection: Int? = nil, tickerEpoch: Double? = nil) -> RenderSettings {
-        guard project.graphics else { return RenderSettings(overlay: nil, mirror: project.mirror) }
+        guard project.graphics else { return RenderSettings(overlay: nil, mirror: project.mirror, referenceCard: ReferenceCardGraphics.artwork(project, camera: outputRect(project)), outputRect: outputRect(project)) }
         let doc = document(project), template = doc.template
-        if template == .custom { return ImportedSVGGraphics.settings(doc, mirror: project.mirror) }
+        if template == .custom {
+            var settings = ImportedSVGGraphics.settings(doc, mirror: project.mirror)
+            settings.referenceCard = ReferenceCardGraphics.artwork(project, camera: settings.cameraRect)
+            settings.outputRect = outputRect(project)
+            return settings
+        }
         let rect = template.cameraRect
         let mask = image { ctx in rounded(ctx, rect, (template == .law || template == .glass) ? 0 : 14.4, .white) }
         let sponsors = doc.showSponsors ? SponsorCarousel(items: SponsorCatalog.migrated(project), monochrome: template == .glass) : nil
@@ -91,7 +107,7 @@ enum BroadcastGraphics {
             animation.headlineTicker = HeadlineTicker(current: current, previous: previous, zone: doc.textZone(.headlines), style: doc.style(.headlines), epoch: tickerEpoch ?? -1_000_000, color: NSColor(studioHex: doc.accentHex))
         }
         let frost = template == .glass ? glassFrostMask(doc) : nil
-        return RenderSettings(overlay: baseOverlay(project, doc: doc, activeIndex: activeIndex, at: date), mirror: project.mirror, cameraRect: rect, cameraMask: mask, animation: animation, frostMask: frost, frostRadius: template == .glass ? min(40, max(0, doc.frostRadius ?? 22)) : 0)
+        return RenderSettings(overlay: baseOverlay(project, doc: doc, activeIndex: activeIndex, at: date), mirror: project.mirror, cameraRect: rect, cameraMask: mask, animation: animation, frostMask: frost, frostRadius: template == .glass ? min(40, max(0, doc.frostRadius ?? 22)) : 0, referenceCard: ReferenceCardGraphics.artwork(project, camera: rect), outputRect: outputRect(project))
     }
     static func overlay(_ project: StudioProject, section: String, activeIndex: Int? = nil, at date: Date = Date()) -> CGImage? {
         let settings = renderSettings(project, activeIndex: activeIndex ?? project.sections.firstIndex(where: { $0.title == section }) ?? 0, at: date)

@@ -68,6 +68,7 @@ struct OverlayDocument: Identifiable, Codable, Equatable {
     var cameraWindow: SVGCameraWindow?
     var cutCameraWindow: Bool?
     var artworkOpacity: Double?
+    var cropToSVG: Bool?
     static func presets(_ project: StudioProject) -> [OverlayDocument] {
         let date = ISO8601DateFormatter().date(from: "2026-10-02T12:00:00-07:00")!
         return OverlayTemplate.allCases.filter { $0 != .custom }.map { template in
@@ -124,9 +125,11 @@ struct BroadcastFrameRenderer: @unchecked Sendable {
     private let overlay: CIImage?
     private let mask: CIImage?
     private let frostMask: CIImage?
+    private let referenceCard: CIImage?
     init(_ settings: RenderSettings) {
         self.settings = settings; overlay = settings.overlay.map(CIImage.init(cgImage:))
         mask = settings.cameraMask.map(CIImage.init(cgImage:)); frostMask = settings.frostMask.map(CIImage.init(cgImage:))
+        referenceCard = settings.referenceCard.map(CIImage.init(cgImage:))
     }
     func compose(_ source: CIImage, at time: Double = ProcessInfo.processInfo.systemUptime) -> CIImage {
         let rect = settings.cameraRect
@@ -142,8 +145,12 @@ struct BroadcastFrameRenderer: @unchecked Sendable {
             camera = blurred.applyingFilter("CIBlendWithAlphaMask", parameters: [kCIInputBackgroundImageKey: camera, kCIInputMaskImageKey: frostMask])
         }
         var frame = overlay.map { $0.composited(over: camera) } ?? camera
+        if let referenceCard { frame = referenceCard.composited(over: frame) }
         if let moving = settings.animation?.frame(at: time) { frame = moving.composited(over: frame) }
         return frame.cropped(to: CGRect(x: 0, y: 0, width: 1280, height: 720))
+    }
+    func cropForOutput(_ frame: CIImage) -> CIImage {
+        frame.cropped(to: settings.outputRect).transformed(by: CGAffineTransform(translationX: -settings.outputRect.minX, y: -settings.outputRect.minY))
     }
     static func fit(_ image: CIImage, to rect: CGRect) -> CIImage {
         let extent = image.extent, scale = max(rect.width / image.extent.width, rect.height / image.extent.height)

@@ -170,6 +170,27 @@ import Combine
             self?.importMediaFiles(urls, kind: kind, secondary: secondary)
         }
     }
+    func importReferenceImage() {
+        guard !isExporting, !importing, let target = selected?.id else { return }
+        StudioFileDialog.media(image: true, multiple: false, message: "Add a reference card to the selected shot") { [weak self] urls in
+            guard let self, let url = urls.first else { return }
+            self.importing = true
+            Task {
+                defer { self.importing = false }
+                do {
+                    let asset = try await Task.detached { try BroadcastReferenceImage.load(url) }.value
+                    guard let index = self.document.clips.firstIndex(where: { $0.id == target }) else { throw StudioError.message("The selected shot was removed. Select another shot and add the image again.") }
+                    self.remember(); var copy = self.document
+                    var library = copy.broadcast.referenceImages ?? []; library.append(asset); copy.broadcast.referenceImages = library
+                    var presentation = copy.clips[index].referenceOverride == true ? copy.clips[index].reference : copy.broadcast.reference
+                    if presentation == nil { presentation = ReferencePresentation(imageID: asset.id) }
+                    presentation?.imageID = asset.id; presentation?.visible = true
+                    copy.clips[index].referenceOverride = true; copy.clips[index].reference = presentation
+                    self.document = copy; self.selection = target
+                } catch { self.error = error.localizedDescription }
+            }
+        }
+    }
     private func importMediaFiles(_ urls: [URL], kind: EditMedia.Kind, secondary: Bool) {
         guard !isExporting, !importing, !urls.isEmpty else { return }
         importing = true

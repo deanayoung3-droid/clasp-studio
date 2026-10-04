@@ -32,27 +32,30 @@ struct OverlayComponentEditor: View {
     }
     private var canvas: some View {
         GeometryReader { geometry in
-            let scale = geometry.size.width / 1280
+            let output = model.outputRect
+            let scale = geometry.size.width / output.width
             ZStack(alignment: .topLeading) {
                 if let preview { Image(nsImage: preview).resizable().scaledToFit() }
                 else { Rectangle().fill(Color(white: 0.14)) }
                 ForEach(OverlayComponent.allCases.filter { !(model.overlay.template == .law && $0 == .date) }) { component in
-                    let rect = model.overlay.zone(component)
+                    let region = model.overlay.zone(component).intersection(output)
+                let rect = region.isNull ? CGRect.zero : region
                     Button { selected = component } label: {
                         Rectangle().fill(Color.white.opacity(0.001))
                     }.buttonStyle(.plain)
                         .frame(width: rect.width * scale, height: rect.height * scale)
-                        .position(x: rect.midX * scale, y: (720 - rect.midY) * scale)
+                        .position(x: (rect.midX - output.minX) * scale, y: (output.maxY - rect.midY) * scale)
                         .accessibilityLabel("Edit \(component.name)")
                 }
-                let rect = model.overlay.zone(selected)
+                let region = model.overlay.zone(selected).intersection(output)
+                let rect = region.isNull ? CGRect.zero : region
                 RoundedRectangle(cornerRadius: selected == .camera ? 7 : 3)
                     .stroke(Color.white, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
                     .shadow(color: .black.opacity(0.8), radius: 1)
                     .frame(width: rect.width * scale, height: rect.height * scale)
-                    .position(x: rect.midX * scale, y: (720 - rect.midY) * scale).allowsHitTesting(false)
+                    .position(x: (rect.midX - output.minX) * scale, y: (output.maxY - rect.midY) * scale).allowsHitTesting(false)
             }.clipShape(RoundedRectangle(cornerRadius: 7))
-        }.aspectRatio(16 / 9, contentMode: .fit)
+        }.aspectRatio(model.outputAspectRatio, contentMode: .fit)
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.white.opacity(0.12)))
             .accessibilityLabel("Overlay component canvas. Uses a sample camera image.")
     }

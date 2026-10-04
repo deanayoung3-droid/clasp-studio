@@ -180,7 +180,10 @@ enum ImportedSVGGraphics {
     static func settings(_ doc: OverlayDocument, mirror: Bool) -> RenderSettings {
         let camera = doc.cameraWindow ?? doc.importedSVG?.cameraForRendering ?? SVGCameraWindow(), rect = camera.rect
         let overlay = BroadcastGraphics.image { ctx in
-            if let asset = doc.importedSVG, let artwork = artwork(asset) { ctx.setAlpha(min(1, max(0, doc.artworkOpacity ?? 1))); ctx.draw(artwork, in: asset.fit == nil ? legacyArtworkRect(asset) : CGRect(x: 0, y: 0, width: 1280, height: 720)) }
+            if let asset = doc.importedSVG, let artwork = artwork(asset) {
+                ctx.setAlpha(min(1, max(0, doc.artworkOpacity ?? 1)))
+                ctx.draw(artwork, in: asset.fit == nil ? legacyArtworkRect(asset) : CGRect(x: 0, y: 0, width: 1280, height: 720))
+            }
             if doc.cutCameraWindow == true { ctx.setBlendMode(.clear); BroadcastGraphics.rounded(ctx, rect, camera.safeRadius, .clear) }
         }
         let mask = BroadcastGraphics.image { ctx in BroadcastGraphics.rounded(ctx, rect, camera.safeRadius, .white) }

@@ -12,6 +12,7 @@ struct StudioView: View {
     @ObservedObject var model: StudioModel
     @State private var leftTab = "Brand"
     @State private var inspectorOpen = false
+    @State private var referenceOpen = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scriptTab: String
     init(model: StudioModel, initialScriptTab: String = "Teleprompter") {
@@ -80,6 +81,7 @@ struct StudioView: View {
             if model.recording { Text(StudioModel.time(model.recordElapsed)).font(.system(size: 13, design: .monospaced)).foregroundStyle(muted) }
             else { Text(model.connecting ? "Allow camera and microphone access if prompted" : model.preparingRecording ? "Waiting for the first camera frame…" : "Finishing your movie…").font(.system(size: 10)).foregroundStyle(muted) }
             Spacer()
+            referenceButton
             Button("Exit focus") { model.recordingFocus = false }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(muted)
             Button { model.stopRecording() } label: { Label(model.openingVideoEditor ? "Opening editor…" : model.finishingRecording ? "Preparing edit…" : model.preparingRecording ? "Cancel" : "Stop recording", systemImage: "stop.fill").font(.system(size: 12, weight: .semibold)) }.buttonStyle(StudioButton(primary: true)).disabled(model.finishingRecording)
         }.padding(.horizontal, 26).frame(height: 54)
@@ -88,7 +90,7 @@ struct StudioView: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack { Text("Your overlay").font(.system(size: 16, weight: .semibold)); Spacer(); Button { customize() } label: { Image(systemName: "xmark").font(.system(size: 10)) }.buttonStyle(.plain).foregroundStyle(muted) }
             Text(model.overlay.name).font(.system(size: 12)).foregroundStyle(muted)
-            if let image = model.demoImage { Image(nsImage: image).resizable().aspectRatio(16 / 9, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 5)) }
+            if let image = model.demoImage { Image(nsImage: image).resizable().aspectRatio(model.outputAspectRatio, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 5)) }
             Button { model.editOverlays("Content") } label: { Label("Edit title, date & text", systemImage: "text.cursor").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(StudioButton())
             Button { model.editOverlays("Branding") } label: { Label("Edit logos & colors", systemImage: "paintpalette").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(StudioButton())
             Button { model.editOverlays("Sponsors") } label: { Label("Edit sponsor carousel", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(StudioButton())
@@ -104,25 +106,27 @@ struct StudioView: View {
                     Text(model.recording ? "Recording · \(StudioModel.time(model.recordElapsed))" : model.connected ? "Ready when you are" : "Set up your camera to get started").font(.system(size: 11)).foregroundStyle(muted)
                 }
                 Spacer()
-                Text("HD  •  16:9").font(.system(size: 9, weight: .medium)).foregroundStyle(muted)
+                Text(model.outputDimensions).font(.system(size: 9, weight: .medium)).foregroundStyle(muted)
             } }
             if model.recordingFocus { Spacer(minLength: 0) }
             ZStack {
                 if model.connected || model.allowsWindowChanges { CameraPreviewView(surface: model.previewSurface) }
-                else if let image = model.demoImage { Image(nsImage: image).resizable().aspectRatio(16 / 9, contentMode: .fit) }
+                else if let image = model.demoImage { Image(nsImage: image).resizable().aspectRatio(model.outputAspectRatio, contentMode: .fit) }
                 if !model.connected && !model.recordingFocus {
                     GeometryReader { proxy in
-                    let area = model.project.graphics ? model.overlay.template.cameraRect : CGRect(x: 0, y: 0, width: 1280, height: 720)
+                    let output = model.outputRect
+                    let area = (model.project.graphics ? model.overlay.zone(.camera) : output).intersection(output)
                     VStack(spacing: 13) {
                         Image(systemName: "video").font(.system(size: 27, weight: .ultraLight)).foregroundStyle(Color.white.opacity(0.7))
                         Text("Bring your camera into frame").font(.system(size: 22, weight: .medium)).tracking(-0.6)
                         Text(model.cameras.isEmpty ? "Connect a webcam, then refresh your devices below." : "Your overlay is ready. Connect your camera to preview it live.").font(.system(size: 11)).foregroundStyle(Color.white.opacity(0.6)).multilineTextAlignment(.center)
                         Button(model.connecting ? "Cancel connection" : "Connect camera") { if model.connecting { model.cancelConnection() } else { model.connect() } }.buttonStyle(StudioButton(primary: true)).disabled(model.cameras.isEmpty && !model.connecting)
-                    }.padding(.horizontal, 25).frame(width: proxy.size.width * area.width / 1280).position(x: proxy.size.width * area.midX / 1280, y: proxy.size.height * (720 - area.midY) / 720)
+                    }.padding(.horizontal, 25).frame(width: proxy.size.width * area.width / output.width).position(x: proxy.size.width * (area.midX - output.minX) / output.width, y: proxy.size.height * (output.maxY - area.midY) / output.height)
                     }
                 }
-            }.aspectRatio(16 / 9, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 8)).overlay(RoundedRectangle(cornerRadius: 8).stroke(edge))
+            }.aspectRatio(model.outputAspectRatio, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 8)).overlay(RoundedRectangle(cornerRadius: 8).stroke(edge))
             if !model.recordingFocus { HStack(spacing: 16) {
+                referenceButton
                 Button { model.openAppleEffects() } label: { Label(model.nativeBackgroundActive ? "Apple background active" : "Apple backgrounds & effects", systemImage: "sparkles").font(.system(size: 11)) }.buttonStyle(.plain).foregroundStyle(muted).disabled(!model.connected).help("Open macOS native video effects and backgrounds")
                 Button { model.editOverlays("Sponsors") } label: { Label("Edit sponsors", systemImage: "arrow.triangle.2.circlepath").font(.system(size: 11)) }.buttonStyle(.plain).foregroundStyle(muted)
                 Spacer()
@@ -132,6 +136,12 @@ struct StudioView: View {
             deviceBar }
             Spacer(minLength: 0)
         }
+    }
+    private var referenceButton: some View {
+        Button { referenceOpen.toggle() } label: {
+            Label(model.project.reference?.visible == true ? "Reference on air" : "Reference image", systemImage: "photo.on.rectangle").font(.system(size: 11))
+        }.buttonStyle(.plain).foregroundStyle(model.project.reference?.visible == true ? accent : muted)
+            .popover(isPresented: $referenceOpen, arrowEdge: .bottom) { LiveReferenceControls(model: model).environment(\.colorScheme, .dark) }
     }
     var deviceBar: some View {
         HStack(alignment: .center, spacing: 18) {

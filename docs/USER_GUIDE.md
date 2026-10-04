@@ -102,6 +102,17 @@ The imported-design inspector lets you change artwork opacity, toggle photo repl
 
 SVGs must be under 12 MB. Embedded PNG, JPEG, GIF and WebP logos work; external image links and scripts do not load. SVG artwork fits the 16:9 broadcast frame. Your original file stays unchanged. The imported artwork and its camera settings are saved with the project and any video draft using it.
 
+**Crop video to SVG canvas** defaults on for imported Fit designs. The preview and exported video use the SVG’s proportions, removing side space without extending the background or stretching the artwork. Camera openings keep their original geometry. Turn it off to retain a 16:9 canvas. **Fill** keeps a 16:9 output and can crop sponsor logos.
+
+## Show a reference image
+
+1. Choose **Reference image** below the preview or in the recording-focus header.
+2. Add a PNG, JPEG, HEIC or TIFF image. Choose its side and size, and optionally enter a caption.
+3. Use **On air** to show or hide the card. The entire image fits in a rounded frame above the lower third.
+4. After recording, select a shot and open **Picture → Reference image**. The images and show/hide moments used live remain editable. Split a shot where you want the card to appear or disappear, then change **On air** for that shot.
+
+Reference images are stored with the project and draft, so moving the original image file does not break an edit. They also work with imported video and split-screen layouts. Image decoding and card drawing happen when controls change, not on every camera frame.
+
 ## Automatic app updates
 
 Clasp Studio 2.0.4 and later check public GitHub releases on launch and hourly without requiring a GitHub account or token. Leave **Studio settings → GitHub updates → Automatically check and download updates** enabled. Verified updates install when you quit; use **Install and restart** to install sooner. Active recording and export are protected.

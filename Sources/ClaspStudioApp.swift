@@ -49,6 +49,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 if !finished || svgError != nil { fputs("SVG preview failed: \(String(describing: svgError))", stderr); exit(1) }
             }
             if let index = CommandLine.arguments.firstIndex(of: "--template"), CommandLine.arguments.indices.contains(index + 1), let document = previewModel.project.overlayLibrary?.first(where: { $0.template.rawValue == CommandLine.arguments[index + 1] }) { previewModel.selectOverlay(document.id) }
+            if CommandLine.arguments.contains("--reference-preview") {
+                let asset = StudioTests.referencePreviewAsset(); previewModel.project.referenceImages = [asset]
+                previewModel.project.reference = ReferencePresentation(imageID: asset.id, caption: "Reference image · Case overview")
+            }
             let timelinePreview = CommandLine.arguments.contains("--timeline-preview")
             var timeline: VideoEditorModel?
             if timelinePreview, let index = CommandLine.arguments.firstIndex(of: "--draft-preview"), CommandLine.arguments.indices.contains(index + 1) {
@@ -62,8 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     if let clip = document.clips.first, let media = document.media.first(where: { $0.id == clip.mediaID }) {
                         let generator = AVAssetImageGenerator(asset: AVURLAsset(url: EditStorage.source(media, in: folder))); generator.appliesPreferredTrackTransform = true
                         if let source = try? generator.copyCGImage(at: .zero, actualTime: nil) {
-                            let frame = EditShotRenderer(clip: clip, project: document.broadcast).frame(primary: CIImage(cgImage: source), secondary: nil, at: 0)
-                            if let cg = CIContext().createCGImage(frame, from: CGRect(x: 0, y: 0, width: 1280, height: 720)) { editor.presentationStill = NSImage(cgImage: cg, size: NSSize(width: 1280, height: 720)) }
+                            let shot = EditShotRenderer(clip: clip, project: document.broadcast)
+                            let frame = shot.renderer.cropForOutput(shot.frame(primary: CIImage(cgImage: source), secondary: nil, at: 0))
+                            if let cg = CIContext().createCGImage(frame, from: frame.extent) { editor.presentationStill = NSImage(cgImage: cg, size: frame.extent.size) }
                         }
                     }
                     timeline = editor

@@ -17,6 +17,8 @@ struct ImportedSVGInspector: View {
                     ForEach(SVGArtworkFit.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.segmented).disabled(model.importingSVG || model.busy)
                 Text("Fit shows the entire design. Fill crops the edges to cover 16:9. Both preserve the original proportions.").foregroundStyle(.secondary).lineSpacing(3)
+                Toggle("Crop video to SVG canvas", isOn: Binding(get: { model.overlay.cropToSVG != false }, set: { value in model.editOverlay { $0.cropToSVG = value } })).toggleStyle(.checkbox)
+                Text("The preview and exported video use the SVG’s proportions. Side space is removed; the artwork and camera opening keep their shape.").foregroundStyle(.secondary).lineSpacing(3)
                 HStack { Text("Artwork opacity"); Spacer(); Text("\(Int((model.overlay.artworkOpacity ?? 1) * 100))%").monospacedDigit() }
                 Slider(value: Binding(get: { model.overlay.artworkOpacity ?? 1 }, set: { value in model.editOverlay { $0.artworkOpacity = value } }), in: 0...1)
                 Toggle("Replace large photos with camera", isOn: Binding(get: { model.overlay.importedSVG?.replacePhotos ?? true }, set: { model.refreshImportedSVG(replacePhotos: $0) })).toggleStyle(.checkbox).disabled(model.importingSVG || model.busy)

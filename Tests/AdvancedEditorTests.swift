@@ -66,5 +66,6 @@ extension StudioTests {
         let outside = frostedPixels.colorAt(x: 700, y: 520)!.redComponent
         check(inside > 0.25 && inside < 0.75 && (outside < 0.1 || outside > 0.9), "Frosted overlay panels blur their backdrop while the camera remains sharp elsewhere")
         try await svgOverlayChecks()
+        try await referenceImageChecks(main: main, folder: folder)
     }
 }

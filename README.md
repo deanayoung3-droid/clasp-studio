@@ -34,6 +34,7 @@ Clasp Studio combines a live camera, your selected microphone, a script-followin
 | Timeline editor | Trim, split, remove and reorder clips; undo and redo edits without changing source footage. |
 | Imported footage | Bring in Zoom recordings and other MOV/MP4 videos, then add broadcast graphics. |
 | Picture layouts | Replace the camera with an image or video, create a split screen, and remove the topics sidebar per clip. |
+| Reference images | Show a captioned image card on air; change its side, size and visibility live or on the timeline. |
 | Animation library | Import reusable MOV/MP4 stingers with audio, or choose a native news wipe and fade through black. |
 | Saved-file popup | Choose **Show in Finder** to open the recording folder and select the finished file. |
 | GitHub updates | Receive verified releases generated automatically by pushes to `main`. |
@@ -42,7 +43,17 @@ Clasp Studio combines a live camera, your selected microphone, a script-followin
 
 Choose **Overlays → Import SVG**, or **Import SVG overlay…** in the video editor. The file becomes a reusable design immediately, preserving its shapes, outlined lettering, logos and transparent gradients. Its large embedded photos are replaced by the camera by default; smaller logos stay in the artwork.
 
-SVG artwork keeps its original proportions. **Fit** shows the entire design with margins when its aspect ratio differs from 16:9; **Fill** crops the edges to cover the frame. Neither stretches the artwork. Previously saved SVG imports are corrected automatically.
+SVG artwork keeps its original proportions. **Fit** shows the entire design; **Fill** crops the edges to cover 16:9. Neither stretches the artwork. Previously saved SVG imports are corrected automatically.
+
+**Crop video to SVG canvas** is enabled by default for imported Fit designs. The preview and exported file use the SVG’s proportions, removing the surrounding side space without filling it or stretching the artwork. Camera openings retain their original bounds. Output dimensions are rounded to even pixels for H.264; the clean camera take remains available for editing. Turn this option off to keep a 16:9 canvas.
+
+## Reference images on air
+
+![Proportional SVG broadcast with a reference image card](docs/media/reference-image.png)
+
+Choose **Reference image** below the studio preview, or from the recording-focus header. Add a PNG, JPEG, HEIC or TIFF, then use **On air** to show or hide it. The framed card keeps the entire image visible above the lower third, with a left/right position, adjustable size and optional caption.
+
+Image changes made during recording become editable timeline boundaries. After recording, select a shot and open **Picture → Reference image** to add, replace, caption, resize or hide its card. Split at the desired time to change a card’s appearance or disappearance. References remain editable and are included in the preview and export; the original camera recording stays clean.
 
 The imported design inspector controls artwork opacity, photo replacement, removal of solid canvas fills, and the camera opening’s position, size and corner radius. **Cut opening out of artwork** creates a camera window in an opaque design. Use **Replace SVG…** to bring in a revised file while keeping the library entry. SVG lettering converted to paths stays in the artwork and must be changed in your SVG authoring app. Imported SVGs are rendered once and cached; the camera preview and export use native Core Image layers. External links and scripts are not loaded.
 

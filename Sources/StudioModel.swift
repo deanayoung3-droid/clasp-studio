@@ -11,6 +11,7 @@ enum PrompterMode: String, CaseIterable {
 @MainActor final class StudioModel: ObservableObject {
     @Published var project = StudioProject() { didSet {
         if oldValue.sections != project.sections { cachedWords = project.sections.map(\.words); pausePrompter(); voiceWord = 0 }
+        if recording, oldValue.reference != project.reference, let start = recordStarted { recordReferences.append(RecordedReferenceCue(time: Date().timeIntervalSince(start), presentation: project.reference)) }
         updateGraphics(); scheduleSave()
     } }
     @Published var cameraID = ""
@@ -77,10 +78,12 @@ enum PrompterMode: String, CaseIterable {
     @Published var videoEditor: VideoEditorModel?
     @Published var openingVideoEditor = false
     @Published var importingSVG = false
+    @Published var importingReference = false
     @Published var draftsOpen = false
     private var recordingDraft: URL?
     private var recordedProject: StudioProject?
     private var recordCues: [RecordedSectionCue] = []
+    private var recordReferences: [RecordedReferenceCue] = []
     @Published var editorOpen = false
     @Published var editorText = ""
     @Published var settingsOpen = false
@@ -88,6 +91,9 @@ enum PrompterMode: String, CaseIterable {
     @Published var overlayEditorTab = "Library"
     let animationEpoch = ProcessInfo.processInfo.systemUptime
     var overlay: OverlayDocument { BroadcastGraphics.document(project) }
+    var outputRect: CGRect { BroadcastGraphics.outputRect(project) }
+    var outputAspectRatio: CGFloat { outputRect.width / outputRect.height }
+    var outputDimensions: String { "\(Int(outputRect.width)) × \(Int(outputRect.height))" }
     var sponsors: [SponsorItem] { SponsorCatalog.migrated(project) }
     @Published var prompterSize = 22.0
     let updater = AppUpdater()
@@ -115,8 +121,9 @@ enum PrompterMode: String, CaseIterable {
     @Published var demoImage: NSImage?
     private func updateDemo(_ settings: RenderSettings) {
         guard !connected, videoEditor == nil, let cg = BroadcastGraphics.demoBackground else { return }
-        let frame = BroadcastFrameRenderer(settings).compose(CIImage(cgImage: cg), at: animationEpoch)
-        if let image = demoContext.createCGImage(frame, from: CGRect(x: 0, y: 0, width: 1280, height: 720)) { demoImage = NSImage(cgImage: image, size: NSSize(width: 1280, height: 720)) }
+        let renderer = BroadcastFrameRenderer(settings)
+        let frame = renderer.cropForOutput(renderer.compose(CIImage(cgImage: cg), at: animationEpoch))
+        if let image = demoContext.createCGImage(frame, from: frame.extent) { demoImage = NSImage(cgImage: image, size: frame.extent.size) }
     }
     init(persist: Bool = true) {
         persists = persist
@@ -180,6 +187,7 @@ enum PrompterMode: String, CaseIterable {
             guard let self, self.preparingRecording, !self.finishingRecording else { return }
             self.frameDeadline?.invalidate(); self.preparingRecording = false; self.recording = true; self.recordStarted = Date(); self.recordElapsed = 0; self.recordingFocus = true
             self.recordCues = [RecordedSectionCue(time: 0, section: self.activeSection)]
+            self.recordReferences = [RecordedReferenceCue(time: 0, presentation: self.project.reference)]
             if !self.prompterRunning && !self.voiceStarting {
                 if self.prompterMode == .timed || self.microphoneActive { self.togglePrompter() }
                 else { self.voiceStatus = "No microphone audio · choose Reading pace" }
@@ -193,7 +201,8 @@ enum PrompterMode: String, CaseIterable {
             if let error { self.alert = error; self.notice = "Recording could not be saved."; self.log(error) }
             else if let url {
                 self.notice = "Take captured · opening the editor…"; self.log("Draft recording finalized successfully")
-                self.openRecordedDraft(url, folder: self.recordingDraft, project: self.recordedProject ?? self.project, cues: self.recordCues)
+                var recorded = self.recordedProject ?? self.project; recorded.referenceImages = self.project.referenceImages
+                self.openRecordedDraft(url, folder: self.recordingDraft, project: recorded, cues: self.recordCues, references: self.recordReferences)
             }
         } }
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in Task { @MainActor in self?.tick() } }
@@ -383,6 +392,23 @@ enum PrompterMode: String, CaseIterable {
         prompterRunning = false; activeSection = 0; project.sections = sections; project.scriptName = "Custom script"; editorOpen = false
     }
     func editOverlays(_ tab: String = "Library") { overlayEditorTab = tab; overlayEditorOpen = true }
+    func importReferenceImage() {
+        guard !importingReference, !finishingRecording, !preparingRecording else { return }
+        StudioFileDialog.media(image: true, multiple: false, message: "Choose a reference image to show beside you") { [weak self] urls in
+            guard let self, let url = urls.first else { return }
+            self.importingReference = true
+            Task {
+                defer { self.importingReference = false }
+                do {
+                    let asset = try await Task.detached { try BroadcastReferenceImage.load(url) }.value
+                    var project = self.project; var library = project.referenceImages ?? []; library.append(asset); project.referenceImages = library
+                    var presentation = project.reference ?? ReferencePresentation(imageID: asset.id); presentation.imageID = asset.id; presentation.visible = true
+                    project.reference = presentation; self.project = project
+                    self.notice = "Reference image ready. Use On air to show or hide it."
+                } catch { self.alert = error.localizedDescription }
+            }
+        }
+    }
     func importSVGOverlay(replacing id: UUID? = nil) {
         guard !busy, !importingSVG else { return }
         StudioFileDialog.svg { [weak self] url in
@@ -519,7 +545,7 @@ enum PrompterMode: String, CaseIterable {
             let folder: URL
             if persists { folder = try EditStorage.makeDraft() }
             else { folder = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("Clasp-test-draft-" + UUID().uuidString); try FileManager.default.createDirectory(at: folder.appendingPathComponent("Media"), withIntermediateDirectories: true) }
-            recordingDraft = folder; recordedProject = project; recordCues = []
+            recordingDraft = folder; recordedProject = project; recordCues = []; recordReferences = []
             let url = folder.appendingPathComponent("Media/source.mov")
             preparingRecording = true; notice = "Starting recording…"; log("Starting video encoder")
             engine.startRecording(to: url, cleanSource: true)
@@ -555,7 +581,7 @@ enum PrompterMode: String, CaseIterable {
         }
         project = editor.document.broadcast; videoEditor = editor; openingVideoEditor = false
     }
-    private func openRecordedDraft(_ url: URL, folder: URL?, project: StudioProject, cues: [RecordedSectionCue]) {
+    private func openRecordedDraft(_ url: URL, folder: URL?, project: StudioProject, cues: [RecordedSectionCue], references: [RecordedReferenceCue]) {
         openingVideoEditor = true
         Task {
             do {
@@ -563,11 +589,7 @@ enum PrompterMode: String, CaseIterable {
                 let directory = folder ?? url.deletingLastPathComponent().deletingLastPathComponent()
                 let media = EditMedia(name: "Original take.mov", fileName: url.lastPathComponent, kind: .video, duration: length)
                 var document = VideoEditDocument(name: "Broadcast " + Date().formatted(.dateTime.month(.twoDigits).day(.twoDigits).hour().minute()), broadcast: project, media: [media])
-                let points = [RecordedSectionCue(time: 0, section: cues.first?.section ?? 0)] + cues.dropFirst().filter { $0.time > 0.04 && $0.time < length - 0.04 }
-                for (index, point) in points.enumerated() {
-                    let end = index + 1 < points.count ? points[index + 1].time : length
-                    if end - point.time >= 1.0 / 30 { document.clips.append(EditClip(mediaID: media.id, start: point.time, end: end, graphics: project.graphics, mirror: project.mirror, section: point.section, overlayID: project.selectedOverlayID)) }
-                }
+                document.clips = RecordedTimeline.clips(mediaID: media.id, duration: length, project: project, sections: cues, references: references)
                 try EditStorage.save(document, at: directory)
                 configureEditor(VideoEditorModel(document: document, folder: directory)); notice = "Your draft is ready to edit. Export when you’re happy with it."
             } catch { openingVideoEditor = false; alert = "The take is safe at \(url.path), but the editor could not open it: " + error.localizedDescription }
@@ -618,7 +640,7 @@ enum PrompterMode: String, CaseIterable {
         if let url = lastRecording { NSWorkspace.shared.activateFileViewerSelecting([url]) }
     }
     func snapshot() {
-        let camera = previewSurface.currentFrame().flatMap { frame in CIContext().createCGImage(frame, from: frame.extent) }.map { NSImage(cgImage: $0, size: NSSize(width: 1280, height: 720)) }
+        let camera = previewSurface.currentFrame().flatMap { frame in CIContext().createCGImage(frame, from: frame.extent) }.map { NSImage(cgImage: $0, size: NSSize(width: $0.width, height: $0.height)) }
         guard let image = camera ?? demoImage, let data = image.studioPNG else { return }
         let panel = NSSavePanel(); panel.allowedContentTypes = [.png]; panel.nameFieldStringValue = "Clasp-frame.png"
         guard panel.runModal() == .OK, let url = panel.url else { return }
