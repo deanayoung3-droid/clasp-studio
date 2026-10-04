@@ -19,7 +19,15 @@ struct ImportedSVGOverlay: Codable, Equatable {
     var replacePhotos = true
     var removeCanvasFill = true
     var removedPhotos = 0
+    // Missing on older projects whose raster artwork was stretched to 16:9.
+    var fit: SVGArtworkFit?
+    var cameraForRendering: SVGCameraWindow {
+        guard fit == nil else { return camera }
+        let frame = ImportedSVGGraphics.legacyArtworkRect(self)
+        return SVGCameraWindow(x: Double((frame.minX + camera.x * frame.width) / 1280), y: Double((720 - frame.maxY + camera.y * frame.height) / 720), width: Double(camera.width * frame.width / 1280), height: Double(camera.height * frame.height / 720), radius: camera.radius)
+    }
 }
+enum SVGArtworkFit: String, Codable, CaseIterable { case fit = "Fit", fill = "Fill" }
 enum SVGOverlayImport {
     // SVG is artwork, never executable input. Network and file references are
     // removed before WebKit sees it; its page also has a restrictive CSP.
@@ -51,10 +59,10 @@ enum SVGOverlayImport {
         try clean(root, depth: 0)
         return root.xmlString(options: [.nodePreserveAll]).data(using: .utf8)!
     }
-    @MainActor static func render(_ data: Data, replacePhotos: Bool = true, removeCanvasFill: Bool = true) async throws -> ImportedSVGOverlay {
+    @MainActor static func render(_ data: Data, replacePhotos: Bool = true, removeCanvasFill: Bool = true, fit: SVGArtworkFit = .fit) async throws -> ImportedSVGOverlay {
         let clean = try await Task.detached { try sanitize(data) }.value
         let renderer = SVGImportRenderer()
-        return try await renderer.render(clean, replacePhotos: replacePhotos, removeCanvasFill: removeCanvasFill)
+        return try await renderer.render(clean, replacePhotos: replacePhotos, removeCanvasFill: removeCanvasFill, fit: fit)
     }
 }
 @MainActor private final class SVGImportRenderer: NSObject, WKNavigationDelegate {
@@ -63,8 +71,9 @@ enum SVGOverlayImport {
     private var timeout: Task<Void, Never>?
     private var source = Data()
     private var replacePhotos = true, removeCanvasFill = true
-    func render(_ source: Data, replacePhotos: Bool, removeCanvasFill: Bool) async throws -> ImportedSVGOverlay {
-        self.source = source; self.replacePhotos = replacePhotos; self.removeCanvasFill = removeCanvasFill
+    private var fit = SVGArtworkFit.fit
+    func render(_ source: Data, replacePhotos: Bool, removeCanvasFill: Bool, fit: SVGArtworkFit) async throws -> ImportedSVGOverlay {
+        self.source = source; self.replacePhotos = replacePhotos; self.removeCanvasFill = removeCanvasFill; self.fit = fit
         let config = WKWebViewConfiguration(); config.websiteDataStore = .nonPersistent()
         config.defaultWebpagePreferences.allowsContentJavaScript = false
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720), configuration: config)
@@ -92,33 +101,36 @@ enum SVGOverlayImport {
             if(!(w>0&&h>0)) throw Error('SVG needs a viewBox or width and height');
             svg.setAttribute('viewBox',`0 0 ${w} ${h}`);
           }
-          svg.setAttribute('width','1280');svg.setAttribute('height','720');svg.setAttribute('preserveAspectRatio','none');
+          svg.setAttribute('width','1280');svg.setAttribute('height','720');svg.setAttribute('preserveAspectRatio','xMidYMid \#(fit == .fit ? "meet" : "slice")');
+          const view=svg.viewBox.baseVal,scale=Math.\#(fit == .fit ? "min" : "max")(1280/view.width,720/view.height);
+          const canvas={x:(1280-view.width*scale)/2560,y:(720-view.height*scale)/1440,width:view.width*scale/1280,height:view.height*scale/720};
           const bounds=e=>{const b=e.getBoundingClientRect();return {x:b.x/1280,y:b.y/720,width:b.width/1280,height:b.height/720}};
           const area=b=>b.width*b.height;
           const visible=e=>!e.closest('defs,clipPath,mask,pattern');
           const candidates=[];
           for(const e of svg.querySelectorAll('image,rect,path,polygon')){
             if(!visible(e))continue;
-            const b=bounds(e);if(area(b)<.05)continue;
+            const b=bounds(e);if(area(b)/area(canvas)<.05)continue;
             const label=(e.id+' '+(e.getAttribute('data-role')||'')).toLowerCase();
             if(/camera|video-feed|presenter-photo/.test(label)) candidates.push({e,b,named:true});
-            if(e.tagName.toLowerCase()==='image'&&area(b)>.18)candidates.push({e,b,photo:true});
+            if(e.tagName.toLowerCase()==='image'&&area(b)/area(canvas)>.18)candidates.push({e,b,photo:true});
             const fill=e.getAttribute('fill')||getComputedStyle(e).fill;
             const match=fill.match(/url\(["']?#([^"')]+)["']?\)/);
             const pattern=match?document.getElementById(match[1]):null;
-            if(pattern&&pattern.tagName.toLowerCase()==='pattern'&&area(b)>.18){
+            if(pattern&&pattern.tagName.toLowerCase()==='pattern'&&area(b)/area(canvas)>.18){
               const embedded=pattern.querySelector('image')||Array.from(pattern.querySelectorAll('use')).map(u=>document.getElementById((u.getAttribute('href')||u.getAttribute('xlink:href')||'').replace(/^#/,''))).find(n=>n&&n.tagName.toLowerCase()==='image');
               if(embedded)candidates.push({e,b,photo:true,pattern,embedded});
             }
           }
           candidates.sort((a,b)=>(b.named?10:0)+area(b.b)-(a.named?10:0)-area(a.b));
-          const camera=candidates[0]?.b||{x:0,y:0,width:1,height:1};let removed=0;
+          const opening=candidates[0]?.b||canvas;
+          const camera={x:Math.max(0,opening.x),y:Math.max(0,opening.y),width:Math.min(1,opening.x+opening.width)-Math.max(0,opening.x),height:Math.min(1,opening.y+opening.height)-Math.max(0,opening.y)};let removed=0;
           if(\#(replacePhotos ? "true" : "false"))for(const c of candidates){
             if(c.photo||c.named){c.e.remove();if(c.pattern)c.pattern.remove();if(c.embedded)c.embedded.remove();removed++;}
           }
           if(\#(removeCanvasFill ? "true" : "false"))for(const e of Array.from(svg.querySelectorAll('rect'))){
             if(!visible(e))continue;const b=bounds(e),fill=e.getAttribute('fill')||getComputedStyle(e).fill;
-            if(area(b)>.97&&!fill.includes('url(')&&fill!=='none')e.remove();
+            if(area(b)/area(canvas)>.97&&!fill.includes('url(')&&fill!=='none')e.remove();
           }
           return {camera,removed};
         })()
@@ -132,7 +144,7 @@ enum SVGOverlayImport {
             self.webView.takeSnapshot(with: snapshot) { [weak self] image, error in
                 guard let self, self.continuation != nil else { return }
                 guard let cg = image?.studioCGImage, let normalized = BroadcastGraphics.image({ ctx in ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 1280, height: 720)) }), let png = NSBitmapImageRep(cgImage: normalized).representation(using: .png, properties: [:]) else { self.finish(.failure(error ?? StudioError.message("The SVG preview could not be created."))); return }
-                self.finish(.success(ImportedSVGOverlay(source: self.source, png: png, camera: camera, replacePhotos: self.replacePhotos, removeCanvasFill: self.removeCanvasFill, removedPhotos: result["removed"] as? Int ?? 0)))
+                self.finish(.success(ImportedSVGOverlay(source: self.source, png: png, camera: camera, replacePhotos: self.replacePhotos, removeCanvasFill: self.removeCanvasFill, removedPhotos: result["removed"] as? Int ?? 0, fit: self.fit)))
             }
         }
     }
@@ -143,6 +155,21 @@ enum SVGOverlayImport {
     }
 }
 enum ImportedSVGGraphics {
+    private static let legacyFrames = NSCache<NSString, NSValue>()
+    static func legacyArtworkRect(_ asset: ImportedSVGOverlay) -> CGRect {
+        let key = asset.id.uuidString as NSString
+        if let value = legacyFrames.object(forKey: key) { return value.rectValue }
+        var size = CGSize(width: 1280, height: 720)
+        if let root = (try? XMLDocument(data: asset.source, options: [.nodeLoadExternalEntitiesNever]))?.rootElement() {
+            let box = (root.attribute(forName: "viewBox")?.stringValue ?? "").split(whereSeparator: { $0.isWhitespace || $0 == "," }).compactMap { Double($0) }
+            if box.count == 4 { size = CGSize(width: box[2], height: box[3]) }
+            else if let width = root.attribute(forName: "width")?.stringValue.flatMap(Double.init), let height = root.attribute(forName: "height")?.stringValue.flatMap(Double.init) { size = CGSize(width: width, height: height) }
+        }
+        if !size.width.isFinite || !size.height.isFinite || size.width <= 0 || size.height <= 0 { size = CGSize(width: 1280, height: 720) }
+        let scale = min(1280 / size.width, 720 / size.height)
+        let frame = CGRect(x: (1280 - size.width * scale) / 2, y: (720 - size.height * scale) / 2, width: size.width * scale, height: size.height * scale)
+        legacyFrames.setObject(NSValue(rect: frame), forKey: key); return frame
+    }
     private static let cache: NSCache<NSString, NSImage> = { let value = NSCache<NSString, NSImage>(); value.countLimit = 16; value.totalCostLimit = 64 * 1024 * 1024; return value }()
     static func artwork(_ asset: ImportedSVGOverlay) -> CGImage? {
         let key = asset.id.uuidString as NSString
@@ -151,9 +178,9 @@ enum ImportedSVGGraphics {
         cache.setObject(image, forKey: key, cost: 1280 * 720 * 4); return image.studioCGImage
     }
     static func settings(_ doc: OverlayDocument, mirror: Bool) -> RenderSettings {
-        let camera = doc.cameraWindow ?? doc.importedSVG?.camera ?? SVGCameraWindow(), rect = camera.rect
+        let camera = doc.cameraWindow ?? doc.importedSVG?.cameraForRendering ?? SVGCameraWindow(), rect = camera.rect
         let overlay = BroadcastGraphics.image { ctx in
-            if let asset = doc.importedSVG, let artwork = artwork(asset) { ctx.setAlpha(min(1, max(0, doc.artworkOpacity ?? 1))); ctx.draw(artwork, in: CGRect(x: 0, y: 0, width: 1280, height: 720)) }
+            if let asset = doc.importedSVG, let artwork = artwork(asset) { ctx.setAlpha(min(1, max(0, doc.artworkOpacity ?? 1))); ctx.draw(artwork, in: asset.fit == nil ? legacyArtworkRect(asset) : CGRect(x: 0, y: 0, width: 1280, height: 720)) }
             if doc.cutCameraWindow == true { ctx.setBlendMode(.clear); BroadcastGraphics.rounded(ctx, rect, camera.safeRadius, .clear) }
         }
         let mask = BroadcastGraphics.image { ctx in BroadcastGraphics.rounded(ctx, rect, camera.safeRadius, .white) }

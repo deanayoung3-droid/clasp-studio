@@ -11,7 +11,7 @@ struct UpdateSettingsView: View {
             Toggle("Automatically check and download updates", isOn: $updater.automatic).toggleStyle(.checkbox).font(.system(size: 11))
             Text("Downloaded updates install when you quit. Recording and saving always finish first.").font(.system(size: 10)).foregroundStyle(.secondary)
             HStack {
-                Button(updater.working ? "Checking…" : "Check for updates") { Task { await updater.check() } }.disabled(updater.working || updater.ready)
+                Button(updater.working ? "Checking…" : "Check for updates") { Task { await updater.check() } }.disabled(updater.working)
                 if updater.ready { Button("Install and restart") {
                     guard !model.busy else { return }
                     updater.restartRequested = true; model.settingsOpen = false

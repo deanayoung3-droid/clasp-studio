@@ -360,6 +360,13 @@ enum StudioTests {
         let wrongBody = try! JSONEncoder().encode(wrongRepo)
         check((try? UpdateVerification.verify(wrongBody, signature: key.signature(for: wrongBody), publicKey: key.publicKey.rawRepresentation)) == nil, "The updater only accepts its configured repository")
         check(Bundle.main.url(forAuxiliaryExecutable: "ClaspUpdateInstaller") != nil, "The update installation helper is bundled")
+        let assetJSON = Data("{\"id\":1,\"name\":\"Clasp-Studio.zip\",\"size\":100,\"browser_download_url\":\"https://github.com/deanayoung3-droid/clasp-studio/releases/download/build-8/Clasp-Studio.zip\"}".utf8)
+        var publicAsset = try! JSONDecoder().decode(GitHubRelease.Asset.self, from: assetJSON)
+        check(GitHubTransport.publicAssetURL(publicAsset) != nil, "Public GitHub release assets can download without a token or GitHub CLI")
+        for invalid in ["http://github.com/deanayoung3-droid/clasp-studio/releases/download/build-8/Clasp-Studio.zip", "https://github.com/another/repo/releases/download/build-8/Clasp-Studio.zip", "https://example.com/deanayoung3-droid/clasp-studio/releases/download/build-8/Clasp-Studio.zip", "https://github.com/deanayoung3-droid/clasp-studio/releases/download/build-8/different.zip"] {
+            publicAsset.browser_download_url = URL(string: invalid)
+            check(GitHubTransport.publicAssetURL(publicAsset) == nil, "Public updater rejects an untrusted release download URL")
+        }
     }
     static func libraryChecks() async {
         let context = CIContext(), source = CIImage(color: CIColor(red: 0.2, green: 0.4, blue: 0.6)).cropped(to: CGRect(x: 0, y: 0, width: 640, height: 480))

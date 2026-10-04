@@ -413,13 +413,13 @@ enum PrompterMode: String, CaseIterable {
             }
         }
     }
-    func refreshImportedSVG(replacePhotos: Bool? = nil, removeCanvasFill: Bool? = nil) {
+    func refreshImportedSVG(replacePhotos: Bool? = nil, removeCanvasFill: Bool? = nil, fit: SVGArtworkFit? = nil) {
         guard !importingSVG, !busy, let asset = overlay.importedSVG else { return }
         let id = overlay.id; importingSVG = true
         Task {
             defer { importingSVG = false }
             do {
-                let rendered = try await SVGOverlayImport.render(asset.source, replacePhotos: replacePhotos ?? asset.replacePhotos, removeCanvasFill: removeCanvasFill ?? asset.removeCanvasFill)
+                let rendered = try await SVGOverlayImport.render(asset.source, replacePhotos: replacePhotos ?? asset.replacePhotos, removeCanvasFill: removeCanvasFill ?? asset.removeCanvasFill, fit: fit ?? asset.fit ?? .fit)
                 guard let index = project.overlayLibrary?.firstIndex(where: { $0.id == id }) else { return }
                 project.overlayLibrary?[index].importedSVG = rendered
             } catch { alert = error.localizedDescription }

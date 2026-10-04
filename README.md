@@ -42,6 +42,8 @@ Clasp Studio combines a live camera, your selected microphone, a script-followin
 
 Choose **Overlays → Import SVG**, or **Import SVG overlay…** in the video editor. The file becomes a reusable design immediately, preserving its shapes, outlined lettering, logos and transparent gradients. Its large embedded photos are replaced by the camera by default; smaller logos stay in the artwork.
 
+SVG artwork keeps its original proportions. **Fit** shows the entire design with margins when its aspect ratio differs from 16:9; **Fill** crops the edges to cover the frame. Neither stretches the artwork. Previously saved SVG imports are corrected automatically.
+
 The imported design inspector controls artwork opacity, photo replacement, removal of solid canvas fills, and the camera opening’s position, size and corner radius. **Cut opening out of artwork** creates a camera window in an opaque design. Use **Replace SVG…** to bring in a revised file while keeping the library entry. SVG lettering converted to paths stays in the artwork and must be changed in your SVG authoring app. Imported SVGs are rendered once and cached; the camera preview and export use native Core Image layers. External links and scripts are not loaded.
 
 ![An original SVG imported into Clasp Studio](docs/media/svg-import.png)
@@ -146,7 +148,7 @@ Drafts autosave. Undo/redo keeps up to fifty edit states. Export and cancel oper
 flowchart LR
   A[Push to main] --> B[Build and verify universal app]
   B --> C[Package DMG and sign update manifest]
-  C --> D[Publish private GitHub release]
+  C --> D[Publish signed GitHub release]
   D --> E[App checks and downloads]
   E --> F[Install on quit or restart]
 ```
@@ -155,7 +157,9 @@ The release workflow runs on pushes to `main` and can also be run manually from 
 
 Downloaded updates install when you quit, or through **Studio settings → GitHub updates → Install and restart**. The app protects active recording and export from interruption. Installation keeps a previous copy until the new app passes verification and restores it if replacement fails.
 
-This repository is private. On a developer Mac, the updater can use the signed-in GitHub CLI. Other Macs can enter a GitHub fine-grained token with **Contents: read** for this repository under **GitHub access…**; the app saves it in macOS Keychain.
+Public releases download without a GitHub account, token or GitHub CLI. Automatic checks are enabled by default. If a newer release arrives while an update is already prepared, the app replaces the prepared update with the newer verified build. If the repository becomes private, the optional **GitHub access…** controls and signed-in GitHub CLI remain available.
+
+Versions before 2.0.4 assumed private repository access. Those installations need one update to 2.0.4 or later: their existing updater works if GitHub access is connected, or users can install the latest DMG once. Versions without an updater also require that one-time installation. Afterwards, future signed releases download automatically and install on quit. Turning off automatic updates is respected.
 
 The workflow’s `CLASP_UPDATE_SIGNING_KEY` secret is configured in this repository. Its corresponding public key is bundled with the app. Keep that signing key stable so already installed apps can verify future releases. The private signing key is never committed.
 

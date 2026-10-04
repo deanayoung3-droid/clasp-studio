@@ -25,9 +25,27 @@ extension StudioTests {
         let clear = bitmap.colorAt(x: 640, y: 360)!.alphaComponent, middle = bitmap.colorAt(x: 640, y: 630)!.alphaComponent, bottom = bitmap.colorAt(x: 640, y: 715)!.alphaComponent
         check(clear < 0.01 && middle > 0.3 && middle < 0.7 && bottom > 0.9, "SVG alpha gradients survive import instead of becoming a solid background")
         check(bitmap.colorAt(x: 1210, y: 40)!.redComponent > 0.9 && bitmap.colorAt(x: 1210, y: 40)!.alphaComponent > 0.9, "Small embedded SVG logos remain in the original artwork")
+        let square = Data("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect id='camera' width='100' height='100'/><circle cx='50' cy='50' r='20' fill='red'/></svg>".utf8)
+        let fitted = try await SVGOverlayImport.render(square)
+        let fitPixels = NSBitmapImageRep(data: fitted.png)!
+        check(fitted.fit == .fit && fitted.camera.rect == CGRect(x: 280, y: 0, width: 720, height: 720), "Non-16:9 SVGs fit with a camera opening that preserves source proportions")
+        check(fitPixels.colorAt(x: 500, y: 360)!.alphaComponent > 0.9 && fitPixels.colorAt(x: 480, y: 360)!.alphaComponent < 0.01 && fitPixels.colorAt(x: 640, y: 500)!.alphaComponent > 0.9 && fitPixels.colorAt(x: 640, y: 520)!.alphaComponent < 0.01, "A square SVG circle stays circular in the 16:9 preview")
+        let filled = try await SVGOverlayImport.render(square, fit: .fill)
+        let fillPixels = NSBitmapImageRep(data: filled.png)!
+        check(filled.camera.rect == CGRect(x: 0, y: 0, width: 1280, height: 720) && fillPixels.colorAt(x: 390, y: 360)!.alphaComponent > 0.9 && fillPixels.colorAt(x: 640, y: 610)!.alphaComponent > 0.9, "Fill covers the broadcast by cropping, without stretching SVG geometry")
+        let portrait = try await SVGOverlayImport.render(Data("<svg xmlns='http://www.w3.org/2000/svg' viewBox='10 20 100 200'><rect x='10' y='20' width='100' height='200' fill='white'/><rect id='camera' x='10' y='20' width='100' height='200'/></svg>".utf8))
+        check(portrait.camera.rect == CGRect(x: 460, y: 0, width: 360, height: 720) && NSBitmapImageRep(data: portrait.png)!.colorAt(x: 640, y: 360)!.alphaComponent < 0.01, "Portrait SVGs and nonzero viewBox origins retain their camera alignment and remove solid canvas fills")
+        var legacy = fitted; legacy.fit = nil; legacy.camera = SVGCameraWindow()
+        let stretched = BroadcastGraphics.image { ctx in BroadcastGraphics.fill(ctx, CGRect(x: 0, y: 0, width: 1280, height: 720), .red) }!
+        legacy.png = NSBitmapImageRep(cgImage: stretched).representation(using: .png, properties: [:])!
+        var legacyDoc = OverlayDocument.presets(StudioProject())[0]; legacyDoc.template = .custom; legacyDoc.importedSVG = legacy
+        let legacySettings = ImportedSVGGraphics.settings(legacyDoc, mirror: false), legacyPixels = NSBitmapImageRep(cgImage: legacySettings.overlay!)
+        check(legacySettings.cameraRect == CGRect(x: 280, y: 0, width: 720, height: 720) && legacyPixels.colorAt(x: 100, y: 360)!.alphaComponent < 0.01 && legacyPixels.colorAt(x: 300, y: 360)!.redComponent > 0.9, "Previously saved stretched SVGs recover their original aspect ratio without reimporting")
         var doc = OverlayDocument.presets(StudioProject())[0]; doc.template = .custom; doc.importedSVG = asset
         let encoded = try JSONEncoder().encode(doc), restored = try JSONDecoder().decode(OverlayDocument.self, from: encoded)
         check(restored.importedSVG == asset, "Imported SVG artwork and camera settings persist in projects and drafts")
+        let fillRoundTrip = try JSONDecoder().decode(ImportedSVGOverlay.self, from: JSONEncoder().encode(filled))
+        check(fillRoundTrip.fit == .fill, "SVG framing choice persists in saved projects")
         let context = CIContext(), bounds = CGRect(x: 0, y: 0, width: 1280, height: 720)
         let blue = CIImage(color: CIColor(red: 0, green: 0.6, blue: 1)).cropped(to: bounds)
         let rendered = BroadcastFrameRenderer(ImportedSVGGraphics.settings(doc, mirror: false)).compose(blue, at: 0)

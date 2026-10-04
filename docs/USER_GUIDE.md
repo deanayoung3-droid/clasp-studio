@@ -98,6 +98,12 @@ Law · Glass now blurs only the camera pixels behind its frosted panels. Blur an
 
 Open **Overlays** and choose **Import SVG**. You can also import from the video editor’s Overlay inspector or the File menu. The selected file is rendered into a reusable library design, preserving vector artwork, embedded logos and alpha gradients. Large photo placeholders and solid canvas fills are removed by default so the live camera can show through.
 
-The imported-design inspector lets you change artwork opacity, toggle photo replacement or solid-fill removal, and position or resize the camera opening. Enable **Cut opening out of artwork** to clear a new camera area in an opaque overlay; adjust the corner radius there. Choose **Reset camera opening** to restore the detected position. **Replace SVG…** updates that same design with a revised file. Lettering converted to paths remains SVG artwork, so change that lettering in your SVG authoring app before replacing the file.
+The imported-design inspector lets you change artwork opacity, toggle photo replacement or solid-fill removal, and position or resize the camera opening. **Artwork framing → Fit** keeps the whole SVG visible at its original aspect ratio. **Fill** crops the edges to cover 16:9 while keeping the artwork proportional. Old stretched imports are corrected automatically without reimporting. Enable **Cut opening out of artwork** to clear a new camera area in an opaque overlay; adjust the corner radius there. Choose **Reset camera opening** to restore the detected position. **Replace SVG…** updates that same design with a revised file. Lettering converted to paths remains SVG artwork, so change that lettering in your SVG authoring app before replacing the file.
 
 SVGs must be under 12 MB. Embedded PNG, JPEG, GIF and WebP logos work; external image links and scripts do not load. SVG artwork fits the 16:9 broadcast frame. Your original file stays unchanged. The imported artwork and its camera settings are saved with the project and any video draft using it.
+
+## Automatic app updates
+
+Clasp Studio 2.0.4 and later check public GitHub releases on launch and hourly without requiring a GitHub account or token. Leave **Studio settings → GitHub updates → Automatically check and download updates** enabled. Verified updates install when you quit; use **Install and restart** to install sooner. Active recording and export are protected.
+
+If an older installation asks for GitHub access, install the latest DMG once to receive account-free updates going forward. Older copies with working GitHub access can receive this upgrade through their existing updater. A version without an updater cannot update itself remotely.

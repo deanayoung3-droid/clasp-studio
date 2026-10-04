@@ -49,28 +49,40 @@ enum UpdateCommand {
     }
 }
 struct GitHubRelease: Decodable {
-    struct Asset: Decodable { let id: Int; let name: String; let size: Int }
+    struct Asset: Decodable { let id: Int; let name: String; let size: Int; var browser_download_url: URL? }
     let tag_name: String
     let assets: [Asset]
 }
 struct GitHubTransport: Sendable {
     let token: String?
     static var cli: String? { ["/opt/homebrew/bin/gh", "/usr/local/bin/gh", "/usr/bin/gh"].first { FileManager.default.isExecutableFile(atPath: $0) } }
+    static func publicAssetURL(_ asset: GitHubRelease.Asset) -> URL? {
+        guard let url = asset.browser_download_url, url.scheme == "https", url.host == "github.com", url.user == nil, url.password == nil, url.port == nil, url.query == nil, url.fragment == nil,
+              url.path.hasPrefix("/" + UpdateVerification.repository + "/releases/download/"), url.lastPathComponent == asset.name else { return nil }
+        return url
+    }
+    private func request(_ url: URL, binary: Bool, authenticated: Bool = false) async throws -> Data {
+        var request = URLRequest(url: url); request.timeoutInterval = 45
+        if authenticated, let token, !token.isEmpty { request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization") }
+        request.setValue(binary ? "application/octet-stream" : "application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("Clasp-Studio", forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let response = response as? HTTPURLResponse, response.statusCode == 200 else { throw UpdateError.message("GitHub updates are unavailable right now. Check your connection or repository access.") }
+        return data
+    }
     func get(_ path: String, binary: Bool = false) async throws -> Data {
-        if let token, !token.isEmpty {
-            var request = URLRequest(url: URL(string: "https://api.github.com/" + path)!); request.timeoutInterval = 45
-            request.setValue("Bearer " + token, forHTTPHeaderField: "Authorization")
-            request.setValue(binary ? "application/octet-stream" : "application/vnd.github+json", forHTTPHeaderField: "Accept")
-            request.setValue("Clasp-Studio", forHTTPHeaderField: "User-Agent")
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let response = response as? HTTPURLResponse, response.statusCode == 200 else { throw UpdateError.message("GitHub could not authorize this update request. Check your repository access.") }
-            return data
+        let url = URL(string: "https://api.github.com/" + path)!
+        // Public releases work without a token, GitHub account or CLI. Keep
+        // authenticated access as a fallback if the repository becomes private.
+        do { return try await request(url, binary: binary) } catch {
+            if let token, !token.isEmpty { return try await request(url, binary: binary, authenticated: true) }
+            guard let cli = Self.cli else { throw error }
+            return try await Task.detached { try UpdateCommand.run(cli, ["api", path, "--header", "Accept:" + (binary ? "application/octet-stream" : "application/vnd.github+json")]) }.value
         }
-        guard let cli = Self.cli else { throw UpdateError.message("Connect GitHub below to receive updates from the private repository.") }
-        return try await Task.detached { try UpdateCommand.run(cli, ["api", path, "--header", "Accept:" + (binary ? "application/octet-stream" : "application/vnd.github+json")]) }.value
     }
     func asset(_ asset: GitHubRelease.Asset) async throws -> Data {
         guard asset.size > 0, asset.size <= 128 * 1024 * 1024 else { throw UpdateError.message("The update asset is too large.") }
+        if let url = Self.publicAssetURL(asset) { do { return try await request(url, binary: true) } catch { /* Try authenticated API access for private releases. */ } }
         return try await get("repos/" + UpdateVerification.repository + "/releases/assets/\(asset.id)", binary: true)
     }
 }
@@ -91,7 +103,7 @@ enum UpdateCredentials {
     static func remove() { SecItemDelete(query as CFDictionary) }
 }
 @MainActor final class AppUpdater: ObservableObject {
-    @Published var message = "Updates come from your private GitHub repository."
+    @Published var message = "Signed updates download automatically from GitHub and install when you quit."
     @Published var working = false
     @Published var ready = false
     @Published var automatic = UserDefaults.standard.object(forKey: "automaticGitHubUpdates") as? Bool ?? true { didSet { UserDefaults.standard.set(automatic, forKey: "automaticGitHubUpdates") } }
@@ -102,7 +114,7 @@ enum UpdateCredentials {
     private var prepared: URL?
     private var updateBuild = 0
     private var cache: URL { FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("com.clasp.studio/updates", isDirectory: true) }
-    var accountDescription: String { hasToken ? "GitHub access saved in Keychain" : GitHubTransport.cli != nil ? "Uses your signed-in GitHub CLI" : "Connect GitHub to access this private repository" }
+    var accountDescription: String { hasToken ? "Private-repository access saved in Keychain" : "Public updates work without a GitHub account. Access is only needed for private releases." }
     init() { hasToken = UpdateCredentials.token() != nil }
     deinit { timer?.invalidate() }
     func start() {
@@ -113,7 +125,7 @@ enum UpdateCredentials {
     func saveToken(_ token: String) { do { try UpdateCredentials.save(token); hasToken = true; message = "GitHub connected. Check for updates when ready." } catch { message = error.localizedDescription } }
     func removeToken() { UpdateCredentials.remove(); hasToken = false; message = "GitHub access removed from Keychain." }
     func check() async {
-        guard !working, !ready else { return }; working = true; message = "Checking GitHub…"
+        guard !working else { return }; working = true; message = "Checking GitHub…"
         defer { working = false }
         do {
             let transport = GitHubTransport(token: UpdateCredentials.token())
@@ -124,6 +136,7 @@ enum UpdateCredentials {
             let manifest = try UpdateVerification.verify(data, signature: signature, publicKey: key)
             let build = Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0") ?? 0
             guard manifest.build > build else { message = "You're up to date · build \(build)"; return }
+            if ready, manifest.build <= updateBuild { message = "Update ready · installs when you quit, or restart now."; return }
             guard archiveAsset.size == manifest.size else { throw UpdateError.message("The release archive size does not match its signed manifest.") }
             if try Bundle.main.bundleURL.resourceValues(forKeys: [.volumeIsReadOnlyKey]).volumeIsReadOnly == true { message = "Update available. Install Clasp Studio in Applications first."; return }
             message = "Downloading Clasp Studio \(manifest.version)…"
@@ -139,7 +152,9 @@ enum UpdateCredentials {
                 _ = try UpdateCommand.run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
                 guard let bundle = Bundle(url: app), bundle.bundleIdentifier == "com.clasp.studio", Int(bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0") == manifest.build else { throw UpdateError.message("The app inside this update does not match the signed release.") }
             }.value
+            let previous = prepared
             prepared = app; updateBuild = manifest.build; ready = true
+            if let previous { try? FileManager.default.removeItem(at: previous.deletingLastPathComponent().deletingLastPathComponent()) }
             message = "Update ready · installs when you quit, or restart now."
         } catch { message = error.localizedDescription.contains("404") ? "Waiting for the first GitHub release." : error.localizedDescription }
     }
