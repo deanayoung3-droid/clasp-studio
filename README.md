@@ -74,8 +74,6 @@ The imported design inspector controls artwork opacity, photo replacement, remov
 
 The library also includes **AI · Graphite**, based on the gray and black broadcast design.
 
-![AI Graphite broadcast design](docs/media/ai-graphite.png)
-
 Its textured brand tile, dark lower third and purple LIVE indicator are native components; the supplied photograph is replaced by the live camera.
 
 **Law · Glass** adds the new full-frame camera design with floating frosted panels with real, masked backdrop blur, a lower third and a monochrome sponsor strip. Its flattened reference is reconstructed as editable native components; the reference photograph is never included.
