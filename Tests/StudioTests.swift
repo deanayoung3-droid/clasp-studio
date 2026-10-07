@@ -104,6 +104,8 @@ enum StudioTests {
         engine.stopRecording()
         check(finished.wait(timeout: .now() + 20) == .success, "Recording finalizes")
         check(failure == nil, "Recording has no encoder error: \(failure ?? "none")")
+        do { try await audioTailExportChecks(source: url, directory: url.deletingLastPathComponent()) }
+        catch { check(false, "Audio-tail export regression: \(error.localizedDescription)") }
         let asset = AVURLAsset(url: url)
         let videoTracks = try! await asset.loadTracks(withMediaType: .video)
         let audioTracks = try! await asset.loadTracks(withMediaType: .audio)

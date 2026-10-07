@@ -30,6 +30,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     init() {
         if let index = CommandLine.arguments.firstIndex(of: "--render-motion"), CommandLine.arguments.indices.contains(index + 1) { StudioTests.motionPreview(URL(fileURLWithPath: CommandLine.arguments[index + 1])); exit(0) }
         if CommandLine.arguments.contains("--camera-check") { StudioTests.cameraCheck(); exit(0) }
+        if let index = CommandLine.arguments.firstIndex(of: "--verify-export-draft"), CommandLine.arguments.indices.contains(index + 2) {
+            let folder = URL(fileURLWithPath: CommandLine.arguments[index + 1]), output = URL(fileURLWithPath: CommandLine.arguments[index + 2])
+            var finished = false, failed = false
+            Task {
+                do {
+                    let document = try JSONDecoder().decode(VideoEditDocument.self, from: Data(contentsOf: folder.appendingPathComponent("edit.json")))
+                    let result = try await EditCompositionBuilder.build(document, folder: folder)
+                    guard let session = AVAssetExportSession(asset: result.composition, presetName: AVAssetExportPreset1280x720) else { throw StudioError.message("Encoder unavailable") }
+                    guard !FileManager.default.fileExists(atPath: output.path) else { throw StudioError.message("Verification output already exists") }
+                    session.outputURL = output; session.outputFileType = .mp4; session.videoComposition = result.video; session.audioMix = result.audio
+                    await withCheckedContinuation { continuation in session.exportAsynchronously { continuation.resume() } }
+                    guard session.status == .completed else { throw session.error ?? StudioError.message("Export failed") }
+                    print("Draft export verified: \(document.duration) seconds")
+                } catch { fputs("Export verification: \(error)\n", stderr); failed = true }
+                finished = true
+            }
+            while !finished { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+            exit(failed ? 1 : 0)
+        }
         if CommandLine.arguments.contains("--self-test") { StudioTests.run(); exit(0) }
         if let index = CommandLine.arguments.firstIndex(of: "--render-preview"), CommandLine.arguments.indices.contains(index + 1) {
             let previewModel = StudioModel(persist: false)

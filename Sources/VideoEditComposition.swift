@@ -17,6 +17,7 @@ enum EditCompositionBuilder {
         let video: AVAssetTrack
         let audio: AVAssetTrack?
         let transform: CGAffineTransform
+        let videoRange: CMTimeRange
     }
     private static func audio(_ source: AVAssetTrack?, into target: AVMutableCompositionTrack, range: CMTimeRange, at start: CMTime) async throws {
         guard let source else { return }
@@ -31,6 +32,7 @@ enum EditCompositionBuilder {
         let mainMix = AVMutableAudioMixInputParameters(track: primaryAudio)
         let guestMix = AVMutableAudioMixInputParameters(track: secondaryAudio)
         let animationMix = AVMutableAudioMixInputParameters(track: animationAudio)
+        var edges: [String: CIImage] = [:]
         var sources: [UUID: Source] = [:], stills: [UUID: CIImage] = [:]
         let needed = Set(document.clips.flatMap { [$0.mediaID, $0.secondaryID, $0.animationID].compactMap { $0 } })
         for media in document.media where needed.contains(media.id) {
@@ -43,7 +45,7 @@ enum EditCompositionBuilder {
             } else {
                 let asset = AVURLAsset(url: url)
                 guard let video = try await asset.loadTracks(withMediaType: .video).first else { throw StudioError.message("No video track in \(media.name).") }
-                sources[media.id] = Source(asset: asset, video: video, audio: try await asset.loadTracks(withMediaType: .audio).first, transform: try await video.load(.preferredTransform))
+                sources[media.id] = Source(asset: asset, video: video, audio: try await asset.loadTracks(withMediaType: .audio).first, transform: try await video.load(.preferredTransform), videoRange: try await video.load(.timeRange))
             }
         }
         var cursor = 0.0, instructions: [EditCompositionInstruction] = [], renderers: [String: BroadcastFrameRenderer] = [:]
@@ -52,6 +54,25 @@ enum EditCompositionBuilder {
             guard let source = sources[clip.mediaID] else { throw StudioError.message("A clip source is unavailable.") }
             let start = time(cursor), timelineDuration = CMTimeSubtract(time(cursor + clip.duration), time(cursor))
             let range = CMTimeRange(start: time(clip.start), duration: CMTimeSubtract(time(clip.end), time(clip.start)))
+            let available = CMTimeRangeGetIntersection(range, otherRange: source.videoRange)
+            guard available.duration.seconds > 0 else { throw StudioError.message("This clip contains no video frames. Adjust its in and out points.") }
+            let coverage = CMTimeRange(start: time(cursor + (available.start.seconds - range.start.seconds) / clip.safeSpeed), duration: time(available.duration.seconds / clip.safeSpeed))
+            var firstEdge: CIImage?, lastEdge: CIImage?
+            for trailing in [false, true] {
+                let needed = trailing ? CMTimeRangeGetEnd(range).seconds >= CMTimeRangeGetEnd(source.videoRange).seconds - 1.0 / 600 : range.start.seconds < source.videoRange.start.seconds
+                guard needed else { continue }
+                let key = "\(clip.mediaID)-\(trailing)"
+                if edges[key] == nil {
+                    let generator = AVAssetImageGenerator(asset: source.asset)
+                    generator.appliesPreferredTrackTransform = false
+                    generator.requestedTimeToleranceBefore = trailing ? CMTime(seconds: 1, preferredTimescale: 600) : .zero
+                    generator.requestedTimeToleranceAfter = trailing ? .zero : CMTime(seconds: 1, preferredTimescale: 600)
+                    let at = trailing ? max(source.videoRange.start.seconds, CMTimeRangeGetEnd(source.videoRange).seconds - 1.0 / 600) : source.videoRange.start.seconds
+                    let (image, _) = try await generator.image(at: time(at))
+                    edges[key] = CIImage(cgImage: image)
+                }
+                if trailing { lastEdge = edges[key] } else { firstEdge = edges[key] }
+            }
             try primary.insertTimeRange(range, of: source.video, at: start)
             try await audio(source.audio, into: primaryAudio, range: range, at: start)
             if CMTimeCompare(range.duration, timelineDuration) != 0 {
@@ -110,7 +131,7 @@ enum EditCompositionBuilder {
                 let begin = boundaries[interval], end = boundaries[interval + 1]
                 guard end - begin > 0.0001 else { continue }
                 let activeAnimation = begin >= offset - 0.0001 && begin < offset + animationDuration - 0.0001 ? animationID : nil
-                instructions.append(EditCompositionInstruction(range: CMTimeRange(start: time(cursor + begin), duration: CMTimeSubtract(time(cursor + end), time(cursor + begin))), shotRange: CMTimeRange(start: start, duration: timelineDuration), primary: primary.trackID, secondary: guestID, animation: activeAnimation, primaryTransform: source.transform, secondaryTransform: guestTransform, animationTransform: animationTransform, still: clip.secondaryID.flatMap { stills[$0] } ?? (preview && clip.layout != .presenter && guestID == nil ? EditShotRenderer.missingPicture : nil), shot: shot, animationDuration: animationDuration, animationOffset: offset, fadeOutDuration: fadeOut, newsOutDuration: next?.transition == .news || next?.transition == .signature ? min((next?.transitionDuration ?? 0.8) / 2, clip.duration) : 0, signatureOut: next?.transition == .signature))
+                instructions.append(EditCompositionInstruction(range: CMTimeRange(start: time(cursor + begin), duration: CMTimeSubtract(time(cursor + end), time(cursor + begin))), shotRange: CMTimeRange(start: start, duration: timelineDuration), primary: primary.trackID, secondary: guestID, animation: activeAnimation, primaryTransform: source.transform, secondaryTransform: guestTransform, animationTransform: animationTransform, still: clip.secondaryID.flatMap { stills[$0] } ?? (preview && clip.layout != .presenter && guestID == nil ? EditShotRenderer.missingPicture : nil), shot: shot, animationDuration: animationDuration, animationOffset: offset, fadeOutDuration: fadeOut, newsOutDuration: next?.transition == .news || next?.transition == .signature ? min((next?.transitionDuration ?? 0.8) / 2, clip.duration) : 0, signatureOut: next?.transition == .signature, primaryCoverage: coverage, firstEdge: firstEdge, lastEdge: lastEdge))
             }
             cursor += clip.duration
         }

@@ -88,6 +88,9 @@ final class EditCompositionInstruction: NSObject, AVVideoCompositionInstructionP
     let shotRange: CMTimeRange
     let animationOffset: Double
     let signatureOut: Bool
+    let primaryCoverage: CMTimeRange?
+    let firstEdge: CIImage?
+    let lastEdge: CIImage?
     let primaryID: CMPersistentTrackID
     let secondaryID: CMPersistentTrackID?
     let animationID: CMPersistentTrackID?
@@ -99,7 +102,8 @@ final class EditCompositionInstruction: NSObject, AVVideoCompositionInstructionP
     let animationDuration: Double
     let fadeOutDuration: Double
     let newsOutDuration: Double
-    init(range: CMTimeRange, shotRange: CMTimeRange, primary: CMPersistentTrackID, secondary: CMPersistentTrackID?, animation: CMPersistentTrackID?, primaryTransform: CGAffineTransform, secondaryTransform: CGAffineTransform, animationTransform: CGAffineTransform, still: CIImage?, shot: EditShotRenderer, animationDuration: Double, animationOffset: Double, fadeOutDuration: Double, newsOutDuration: Double, signatureOut: Bool) {
+    init(range: CMTimeRange, shotRange: CMTimeRange, primary: CMPersistentTrackID, secondary: CMPersistentTrackID?, animation: CMPersistentTrackID?, primaryTransform: CGAffineTransform, secondaryTransform: CGAffineTransform, animationTransform: CGAffineTransform, still: CIImage?, shot: EditShotRenderer, animationDuration: Double, animationOffset: Double, fadeOutDuration: Double, newsOutDuration: Double, signatureOut: Bool, primaryCoverage: CMTimeRange? = nil, firstEdge: CIImage? = nil, lastEdge: CIImage? = nil) {
+        self.primaryCoverage = primaryCoverage; self.firstEdge = firstEdge; self.lastEdge = lastEdge
         timeRange = range; self.shotRange = shotRange; self.animationOffset = animationOffset; self.signatureOut = signatureOut; primaryID = primary; secondaryID = secondary; animationID = animation
         requiredSourceTrackIDs = ([primary] + [secondary, animation].compactMap { $0 }).map { NSNumber(value: $0) }
         self.primaryTransform = primaryTransform; self.secondaryTransform = secondaryTransform; self.animationTransform = animationTransform
@@ -120,8 +124,15 @@ final class EditVideoCompositor: NSObject, AVVideoCompositing, @unchecked Sendab
         queue.async { [self] in autoreleasepool {
             lock.lock(); let canceled = token != generation; lock.unlock()
             guard !canceled else { request.finishCancelledRequest(); return }
-            guard let instruction = request.videoCompositionInstruction as? EditCompositionInstruction, let primary = request.sourceFrame(byTrackID: instruction.primaryID), let output = request.renderContext.newPixelBuffer() else { request.finish(with: StudioError.message("A source video frame could not be decoded.")); return }
-            let main = CIImage(cvPixelBuffer: primary).transformed(by: instruction.primaryTransform)
+            guard let instruction = request.videoCompositionInstruction as? EditCompositionInstruction else { request.finish(with: StudioError.message("The timeline instruction is unavailable.")); return }
+            guard let output = request.renderContext.newPixelBuffer() else { request.finish(with: StudioError.message("The export could not allocate a video frame. Close other video apps and try again.")); return }
+            let source: CIImage?
+            if let pixel = request.sourceFrame(byTrackID: instruction.primaryID) { source = CIImage(cvPixelBuffer: pixel) }
+            else if let coverage = instruction.primaryCoverage, request.compositionTime.seconds >= CMTimeRangeGetEnd(coverage).seconds - 1.0 / 30, let edge = instruction.lastEdge { source = edge }
+            else if let coverage = instruction.primaryCoverage, request.compositionTime.seconds < coverage.start.seconds, let edge = instruction.firstEdge { source = edge }
+            else { source = nil }
+            guard let source else { request.finish(with: StudioError.message("A source video frame could not be decoded at \(String(format: "%.3f", request.compositionTime.seconds)) seconds. The original recording is still saved.")); return }
+            let main = source.transformed(by: instruction.primaryTransform)
             let second = instruction.secondaryID.flatMap { request.sourceFrame(byTrackID: $0) }.map { CIImage(cvPixelBuffer: $0).transformed(by: instruction.secondaryTransform) } ?? instruction.still
             let time = request.compositionTime.seconds
             var frame = instruction.shot.frame(primary: main, secondary: second, at: time)
