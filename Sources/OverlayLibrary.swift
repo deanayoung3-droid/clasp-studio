@@ -69,6 +69,7 @@ struct OverlayDocument: Identifiable, Codable, Equatable {
     var cutCameraWindow: Bool?
     var artworkOpacity: Double?
     var cropToSVG: Bool?
+    var svgRegions: [String: SVGCameraWindow]?
     static func presets(_ project: StudioProject) -> [OverlayDocument] {
         let date = ISO8601DateFormatter().date(from: "2026-10-02T12:00:00-07:00")!
         return OverlayTemplate.allCases.filter { $0 != .custom }.map { template in

@@ -91,6 +91,7 @@ enum BroadcastGraphics {
         let doc = document(project), template = doc.template
         if template == .custom {
             var settings = ImportedSVGGraphics.settings(doc, mirror: project.mirror)
+            ImportedSVGEditableGraphics.apply(to: &settings, project: project, doc: doc, activeIndex: activeIndex, previousSection: previousSection, tickerEpoch: tickerEpoch, epoch: epoch)
             settings.referenceCard = ReferenceCardGraphics.artwork(project, camera: settings.cameraRect)
             settings.outputRect = outputRect(project)
             return settings

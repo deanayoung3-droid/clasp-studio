@@ -9,10 +9,12 @@ struct ImportedSVGInspector: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 17) {
+                Text("ARTWORK").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                 Label("Original SVG artwork", systemImage: "checkmark.circle").font(.system(size: 12, weight: .medium))
-                Text("Colors, gradients, logos and lettering come directly from your file. The SVG is rendered once; the live camera stays native.").foregroundStyle(.secondary).lineSpacing(3)
+                Text("Keep the original colors and gradients. Select Headlines, Sponsors or Brand in the layer list to make those parts editable.").foregroundStyle(.secondary).lineSpacing(3)
                 if model.importingSVG { ProgressView("Rendering SVG…").controlSize(.small) }
                 Button("Replace SVG…") { model.importSVGOverlay(replacing: model.overlay.id) }.disabled(model.importingSVG || model.busy)
+                DisclosureGroup("Advanced artwork settings") {
                 Picker("Artwork framing", selection: Binding(get: { model.overlay.importedSVG?.fit ?? .fit }, set: { model.refreshImportedSVG(fit: $0) })) {
                     ForEach(SVGArtworkFit.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }.pickerStyle(.segmented).disabled(model.importingSVG || model.busy)
@@ -26,6 +28,7 @@ struct ImportedSVGInspector: View {
                 Text("A gentle blur follows the original SVG gradient. Set to zero for the exact original fade.").foregroundStyle(.secondary).lineSpacing(3)
                 Toggle("Replace large photos with camera", isOn: Binding(get: { model.overlay.importedSVG?.replacePhotos ?? true }, set: { model.refreshImportedSVG(replacePhotos: $0) })).toggleStyle(.checkbox).disabled(model.importingSVG || model.busy)
                 Toggle("Remove solid canvas fill", isOn: Binding(get: { model.overlay.importedSVG?.removeCanvasFill ?? true }, set: { model.refreshImportedSVG(removeCanvasFill: $0) })).toggleStyle(.checkbox).disabled(model.importingSVG || model.busy)
+                }
                 Divider()
                 Text("Camera opening").font(.system(size: 12, weight: .medium))
                 Text("Transparent areas show the camera. Adjust its position here, or cut a new window into an opaque design.").foregroundStyle(.secondary).lineSpacing(3)
@@ -37,7 +40,7 @@ struct ImportedSVGInspector: View {
                 Toggle("Cut opening out of artwork", isOn: Binding(get: { model.overlay.cutCameraWindow == true }, set: { value in model.editOverlay { $0.cutCameraWindow = value } })).toggleStyle(.checkbox)
                 Button("Reset camera opening") { model.editOverlay { $0.cameraWindow = nil; $0.cutCameraWindow = false } }
                 Button("Full-frame camera") { model.editOverlay { $0.cameraWindow = SVGCameraWindow() } }
-                Text("Outlined text stays in the SVG artwork. To change those letters or logos, edit the SVG and choose Replace SVG.").foregroundStyle(.secondary).lineSpacing(3)
+                Text("Draw editable regions around outlined lettering or logos in the preview. Restore original SVG content at any time.").foregroundStyle(.secondary).lineSpacing(3)
             }.font(.system(size: 11)).controlSize(.small).padding(17).frame(maxWidth: .infinity, alignment: .leading)
         }
     }

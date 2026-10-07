@@ -241,7 +241,7 @@ struct VideoEditorView: View {
                 let imported = model.document.broadcast.overlayLibrary?.first(where: { $0.id == designID })?.template == .custom
                 Divider()
                 if imported {
-                    Text("Your SVG artwork is preserved. Edit overlay controls its camera opening and opacity; Replace SVG updates its lettering and logos.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(4)
+                    Text("Edit overlay to change headlines, sponsors and logos. For imported SVGs, draw the editable areas on the preview.").font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(4)
                 } else {
                     Toggle("Show topics sidebar", isOn: clip(\.topics, fallback: true)).toggleStyle(.switch).controlSize(.mini)
                     if selected.topics { Text("Active headline").foregroundStyle(.secondary); Picker("Headline", selection: clip(\.section, fallback: 0)) { ForEach(Array(model.document.broadcast.sections.enumerated()), id: \.element.id) { index, section in Text(section.title).tag(index) } }.labelsHidden() }

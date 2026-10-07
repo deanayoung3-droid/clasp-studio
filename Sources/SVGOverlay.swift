@@ -59,10 +59,10 @@ enum SVGOverlayImport {
         try clean(root, depth: 0)
         return root.xmlString(options: [.nodePreserveAll]).data(using: .utf8)!
     }
-    @MainActor static func render(_ data: Data, replacePhotos: Bool = true, removeCanvasFill: Bool = true, fit: SVGArtworkFit = .fit) async throws -> ImportedSVGOverlay {
+    @MainActor static func render(_ data: Data, replacePhotos: Bool = true, removeCanvasFill: Bool = true, fit: SVGArtworkFit = .fit, editableRegions: [SVGCameraWindow] = []) async throws -> ImportedSVGOverlay {
         let clean = try await Task.detached { try sanitize(data) }.value
         let renderer = SVGImportRenderer()
-        return try await renderer.render(clean, replacePhotos: replacePhotos, removeCanvasFill: removeCanvasFill, fit: fit)
+        return try await renderer.render(clean, replacePhotos: replacePhotos, removeCanvasFill: removeCanvasFill, fit: fit, editableRegions: editableRegions)
     }
 }
 @MainActor private final class SVGImportRenderer: NSObject, WKNavigationDelegate {
@@ -72,8 +72,9 @@ enum SVGOverlayImport {
     private var source = Data()
     private var replacePhotos = true, removeCanvasFill = true
     private var fit = SVGArtworkFit.fit
-    func render(_ source: Data, replacePhotos: Bool, removeCanvasFill: Bool, fit: SVGArtworkFit) async throws -> ImportedSVGOverlay {
-        self.source = source; self.replacePhotos = replacePhotos; self.removeCanvasFill = removeCanvasFill; self.fit = fit
+    private var editableRegions: [SVGCameraWindow] = []
+    func render(_ source: Data, replacePhotos: Bool, removeCanvasFill: Bool, fit: SVGArtworkFit, editableRegions: [SVGCameraWindow]) async throws -> ImportedSVGOverlay {
+        self.source = source; self.replacePhotos = replacePhotos; self.removeCanvasFill = removeCanvasFill; self.fit = fit; self.editableRegions = editableRegions
         let config = WKWebViewConfiguration(); config.websiteDataStore = .nonPersistent()
         config.defaultWebpagePreferences.allowsContentJavaScript = false
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: 1280, height: 720), configuration: config)
@@ -131,6 +132,17 @@ enum SVGOverlayImport {
           if(\#(removeCanvasFill ? "true" : "false"))for(const e of Array.from(svg.querySelectorAll('rect'))){
             if(!visible(e))continue;const b=bounds(e),fill=e.getAttribute('fill')||getComputedStyle(e).fill;
             if(area(b)/area(canvas)>.97&&!fill.includes('url(')&&fill!=='none')e.remove();
+          }
+          const regions=\#(String(decoding: (try? JSONEncoder().encode(editableRegions)) ?? Data("[]".utf8), as: UTF8.self));
+          // Remove only small, wholly-contained foreground objects. Large
+          // gradient panels and canvas backgrounds remain original SVG artwork.
+          for(const e of Array.from(svg.querySelectorAll('text,path,image,use,polygon,polyline,circle,ellipse,rect,line'))){
+            if(!visible(e))continue;
+            const b=bounds(e), tag=e.tagName.toLowerCase(), fill=e.getAttribute('fill')||getComputedStyle(e).fill;
+            const ink=tag!=='rect'||area(b)<.015;
+            if(!ink)continue;
+            if(fill.includes('url(') && tag!=='image' && tag!=='use' && !regions.some(r=>area(b)<area(r)*.25))continue;
+            if(regions.some(r=> b.width>0 && b.height>=0 && b.x>=r.x-.002 && b.y>=r.y-.002 && b.x+b.width<=r.x+r.width+.002 && b.y+b.height<=r.y+r.height+.002 && area(b)<=area(r)*.95))e.remove();
           }
           return {camera,removed};
         })()

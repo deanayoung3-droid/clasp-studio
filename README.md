@@ -222,3 +222,9 @@ Graphics rasterize when settings change. Frames reuse cached textures and only a
 - Prepared updates: `~/Library/Caches/com.clasp.studio/updates`
 
 The source backup includes app code, design assets, installer artwork and sample previews. Sponsor artwork belongs to its respective owners; bundled designs and brand assets are provided for this project.
+
+### Editing an imported SVG
+
+SVG artwork keeps its original colors and gradients. In **Overlays**, choose **Headlines**, **Sponsor carousel**, **Episode title**, **Episode date**, or **Program brand**, then draw a box around that content on the preview. Clasp replaces foreground vector content in the box with an editable component. Headlines follow your script; sponsor names, logos, order and speed use the existing carousel controls. Use **Restore original SVG content** to undo a mapping. Flattened screenshots inside an SVG cannot be separated into individual letters or logos; export those elements as vectors for best results.
+
+**Customize** provides quick headline and sponsor name edits, with direct links to layout and logo controls. Advanced framing, opacity and camera settings are grouped under **SVG artwork & framing**.

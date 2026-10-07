@@ -34,7 +34,9 @@ struct SponsorCarousel: @unchecked Sendable {
     let image: CIImage
     let period: CGFloat
     let count: Int
-    init?(items: [SponsorItem], monochrome: Bool = false) {
+    let destination: CGRect
+    init?(items: [SponsorItem], monochrome: Bool = false, destination: CGRect = SponsorCarousel.rect) {
+        self.destination = destination
         let visible = items.filter { $0.enabled && (!$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || SponsorCatalog.logo($0) != nil) }
         guard !visible.isEmpty else { return nil }
         let cells = visible.map { item -> (SponsorItem, CGImage?, CGFloat) in
@@ -64,6 +66,7 @@ struct SponsorCarousel: @unchecked Sendable {
     }
     func frame(at elapsed: Double, speed: Double) -> CIImage {
         let tiled = image.applyingFilter("CIAffineTile", parameters: [kCIInputTransformKey: NSAffineTransform()])
-        return tiled.transformed(by: CGAffineTransform(translationX: -offset(at: elapsed, speed: speed), y: 0)).cropped(to: Self.rect)
+        let scale = destination.height / Self.rect.height
+        return tiled.transformed(by: CGAffineTransform(scaleX: scale, y: scale)).transformed(by: CGAffineTransform(translationX: destination.minX - offset(at: elapsed, speed: speed), y: destination.minY)).cropped(to: destination)
     }
 }

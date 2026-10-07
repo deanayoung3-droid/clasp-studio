@@ -39,7 +39,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                     do {
                         let url = URL(fileURLWithPath: CommandLine.arguments[svgIndex + 1])
                         let asset = try await SVGOverlayImport.render(Data(contentsOf: url))
-                        var document = previewModel.overlay; document.id = UUID(); document.name = url.deletingPathExtension().lastPathComponent; document.template = .custom; document.importedSVG = asset
+                        var document = previewModel.overlay; document.id = UUID(); document.name = url.deletingPathExtension().lastPathComponent; document.template = .custom; document.importedSVG = asset; document.accentHex = "FFFFFF"
+                        if CommandLine.arguments.contains("--mapped-svg-preview") {
+                            document.svgRegions = Dictionary(uniqueKeysWithValues: [OverlayComponent.headlines, .sponsors].map { ($0.rawValue, document.defaultSVGRegion($0)) })
+                            document.showHeadlines = true; document.showSponsors = true
+                            document.importedSVG = try await SVGOverlayImport.render(asset.source, editableRegions: Array(document.svgRegions!.values))
+                        }
                         previewModel.project.overlayLibrary?.append(document); previewModel.project.selectedOverlayID = document.id
                     } catch { svgError = error }
                     finished = true
@@ -84,7 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             if focusPreview { previewModel.recordingFocus = true; previewModel.recording = true; previewModel.recordElapsed = 42 }
             if voicePreview { previewModel.prompterMode = .voice; previewModel.voiceWord = 6 }
             if focusPreview { previewModel.prompterRunning = true; previewModel.voiceStatus = "Following your voice" }
-            let content: AnyView = timeline.map { AnyView(VideoEditorView(studio: previewModel, model: $0)) } ?? (savedPreview ? AnyView(RecordingSavedView(model: previewModel)) : editorPreview ? AnyView(OverlayEditor(model: previewModel, initialTab: CommandLine.arguments.contains("--sponsors-preview") ? "Sponsors" : "Components")) : AnyView(StudioView(model: previewModel, initialScriptTab: voicePreview ? "Teleprompter" : "Sections")))
+            let content: AnyView = timeline.map { AnyView(VideoEditorView(studio: previewModel, model: $0)) } ?? (savedPreview ? AnyView(RecordingSavedView(model: previewModel)) : editorPreview ? AnyView(OverlayEditor(model: previewModel, initialTab: CommandLine.arguments.contains("--sponsors-preview") ? "Sponsors" : "Components")) : AnyView(StudioView(model: previewModel, initialScriptTab: voicePreview ? "Teleprompter" : "Sections", initialCustomize: CommandLine.arguments.contains("--customize-preview"))))
             let view = NSHostingView(rootView: content.environment(\.colorScheme, .dark).frame(width: previewWidth, height: previewHeight))
             let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: previewWidth, height: previewHeight), styleMask: [.borderless], backing: .buffered, defer: false)
             window.appearance = NSAppearance(named: .darkAqua)

@@ -438,8 +438,9 @@ enum PrompterMode: String, CaseIterable {
                     if let id, let index = self.project.overlayLibrary?.firstIndex(where: { $0.id == id }) {
                         self.project.overlayLibrary?[index].importedSVG = artwork
                         self.project.overlayLibrary?[index].cameraWindow = nil
+                        self.project.overlayLibrary?[index].svgRegions = nil
                     } else {
-                        var document = OverlayDocument(name: url.deletingPathExtension().lastPathComponent, template: .custom, title: "", presenter: "", handle: "", date: Date(), headlineHeading: "", brandName: "", brandSubtitle: "", accentHex: "FFFFFF", liveDotHex: "FF343B", titleSize: 39)
+                        var document = OverlayDocument(name: url.deletingPathExtension().lastPathComponent, template: .custom, title: self.project.showTitle, presenter: "", handle: "", date: Date(), headlineHeading: "", brandName: "", brandSubtitle: "", accentHex: "FFFFFF", liveDotHex: "FF343B", titleSize: 39)
                         document.showDate = false; document.showPresenter = false; document.showHeadlines = false; document.showLive = false; document.showPresentedBy = false; document.showSponsors = false
                         document.importedSVG = artwork
                         var library = self.project.overlayLibrary ?? []; library.append(document)
@@ -452,16 +453,16 @@ enum PrompterMode: String, CaseIterable {
             }
         }
     }
-    func refreshImportedSVG(replacePhotos: Bool? = nil, removeCanvasFill: Bool? = nil, fit: SVGArtworkFit? = nil) {
+    func refreshImportedSVG(replacePhotos: Bool? = nil, removeCanvasFill: Bool? = nil, fit: SVGArtworkFit? = nil, onFailure: (() -> Void)? = nil) {
         guard !importingSVG, !busy, let asset = overlay.importedSVG else { return }
-        let id = overlay.id; importingSVG = true
+        let id = overlay.id, regions = Array((overlay.svgRegions ?? [:]).values); importingSVG = true
         Task {
             defer { importingSVG = false }
             do {
-                let rendered = try await SVGOverlayImport.render(asset.source, replacePhotos: replacePhotos ?? asset.replacePhotos, removeCanvasFill: removeCanvasFill ?? asset.removeCanvasFill, fit: fit ?? asset.fit ?? .fit)
+                let rendered = try await SVGOverlayImport.render(asset.source, replacePhotos: replacePhotos ?? asset.replacePhotos, removeCanvasFill: removeCanvasFill ?? asset.removeCanvasFill, fit: fit ?? asset.fit ?? .fit, editableRegions: regions)
                 guard let index = project.overlayLibrary?.firstIndex(where: { $0.id == id }) else { return }
                 project.overlayLibrary?[index].importedSVG = rendered
-            } catch { alert = error.localizedDescription }
+            } catch { onFailure?(); alert = error.localizedDescription }
         }
     }
     func editOverlay(_ change: (inout OverlayDocument) -> Void) {

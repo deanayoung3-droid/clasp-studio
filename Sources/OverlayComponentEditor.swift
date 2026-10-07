@@ -15,7 +15,11 @@ struct OverlayComponentEditor: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                inspector
+                if model.overlay.template == .custom, OverlayComponent.svgEditable.contains(selected) {
+                    SVGRegionControls(model: model, component: selected)
+                    Divider()
+                }
+                inspector.disabled(model.overlay.template == .custom && model.overlay.svgRegions?[selected.rawValue] == nil)
                 if selected.supportsTypography {
                     Divider()
                     Text("Typography").font(.system(size: 11)).foregroundStyle(.secondary)
@@ -26,7 +30,7 @@ struct OverlayComponentEditor: View {
                     }
                     Button("Reset text style") { model.editOverlay { $0.editStyle(selected) { $0.textScale = 1; $0.padding = 0; $0.alignment = .left } } }.controlSize(.small)
                 }
-                Text(model.overlay.template == .ticker && selected == .headlines ? "The current script heading scrolls upward beside the SVG brand. Edit the headings below or hide them to show the episode title." : selected.rule).font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
+                Text((model.overlay.template == .ticker || model.overlay.template == .custom) && selected == .headlines ? "The current script heading scrolls upward beside the SVG brand. Edit the headings below or hide them to show the episode title." : selected.rule).font(.system(size: 10)).foregroundStyle(.secondary).lineSpacing(3)
             }.font(.system(size: 11)).padding(17).frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -100,8 +104,8 @@ struct OverlayComponentEditor: View {
             }
             if model.overlay.template == .ticker { Text("One headline scrolls upward as the script changes sections.").font(.system(size: 11)).foregroundStyle(.secondary) }
             Toggle("Show headlines", isOn: value(\.showHeadlines)).toggleStyle(.checkbox)
-            if model.overlay.template != .ticker { input("Panel heading", value(\.headlineHeading)) }
-            ColorPicker(model.overlay.template == .ticker ? "Headline color" : "Active card", selection: Binding(get: { Color(nsColor: NSColor(studioHex: model.overlay.accentHex)) }, set: { color in model.editOverlay { $0.accentHex = NSColor(color).studioHex } }), supportsOpacity: false)
+            if model.overlay.template != .ticker && model.overlay.template != .custom { input("Panel heading", value(\.headlineHeading)) }
+            ColorPicker((model.overlay.template == .ticker || model.overlay.template == .custom) ? "Headline color" : "Active card", selection: Binding(get: { Color(nsColor: NSColor(studioHex: model.overlay.accentHex)) }, set: { color in model.editOverlay { $0.accentHex = NSColor(color).studioHex } }), supportsOpacity: false)
             ForEach(model.project.sections) { section in
                 input(section.id == model.section?.id ? "Current section" : "Headline", Binding(get: { model.project.sections.first(where: { $0.id == section.id })?.title ?? "" }, set: { title in if let index = model.project.sections.firstIndex(where: { $0.id == section.id }) { model.project.sections[index].title = title } }))
             }

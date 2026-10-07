@@ -15,8 +15,8 @@ struct StudioView: View {
     @State private var referenceOpen = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var scriptTab: String
-    init(model: StudioModel, initialScriptTab: String = "Teleprompter") {
-        self.model = model; _scriptTab = State(initialValue: initialScriptTab)
+    init(model: StudioModel, initialScriptTab: String = "Teleprompter", initialCustomize: Bool = false) {
+        self.model = model; _scriptTab = State(initialValue: initialScriptTab); _inspectorOpen = State(initialValue: initialCustomize)
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -24,7 +24,7 @@ struct StudioView: View {
             Rectangle().fill(edge).frame(height: 1)
             HStack(alignment: .top, spacing: 20) {
                 if inspectorOpen && !model.recordingFocus {
-                    branding.frame(width: 222).transition(.move(edge: .leading).combined(with: .opacity))
+                    branding.frame(width: 280).transition(.move(edge: .leading).combined(with: .opacity))
                     Rectangle().fill(edge).frame(width: 1)
                 }
                 if prompterAtTop {
@@ -113,16 +113,50 @@ struct StudioView: View {
         }.padding(.horizontal, 26).frame(height: 54)
     }
     var branding: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack { Text("Your overlay").font(.system(size: 16, weight: .semibold)); Spacer(); Button { customize() } label: { Image(systemName: "xmark").font(.system(size: 10)) }.buttonStyle(.plain).foregroundStyle(muted) }
-            Text(model.overlay.name).font(.system(size: 12)).foregroundStyle(muted)
-            if let image = model.demoImage { Image(nsImage: image).resizable().aspectRatio(model.outputAspectRatio, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 5)) }
-            Button { model.editOverlays("Content") } label: { Label("Edit title, date & text", systemImage: "text.cursor").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(StudioButton())
-            Button { model.editOverlays("Branding") } label: { Label("Edit logos & colors", systemImage: "paintpalette").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(StudioButton())
-            Button { model.editOverlays("Sponsors") } label: { Label("Edit sponsor carousel", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(StudioButton())
-            Text("Edits are saved for each overlay. Sponsor names and logos are shared across designs.").font(.system(size: 11)).foregroundStyle(muted).lineSpacing(4)
-            Spacer()
-        }.font(.system(size: 11))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                HStack { Text("Customize").font(.system(size: 17, weight: .semibold)); Spacer(); Button { customize() } label: { Image(systemName: "xmark").padding(5) }.buttonStyle(.plain).foregroundStyle(muted).accessibilityLabel("Close Customize") }
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(model.overlay.name).font(.system(size: 12, weight: .medium))
+                    Text(model.overlay.template == .custom ? "Imported SVG · your original artwork" : model.overlay.template.name).font(.system(size: 10)).foregroundStyle(muted)
+                    if let image = model.demoImage { Image(nsImage: image).resizable().aspectRatio(model.outputAspectRatio, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 5)) }
+                    Toggle("Show overlay", isOn: $model.project.graphics).toggleStyle(.switch).controlSize(.small)
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("HEADLINES & TEXT").font(.system(size: 10, weight: .semibold)).foregroundStyle(muted)
+                    if model.overlay.template != .custom || model.overlay.svgRegions?[OverlayComponent.title.rawValue] != nil {
+                        TextField("Episode title", text: Binding(get: { model.overlay.title }, set: { title in model.editOverlay { $0.title = title } })).textFieldStyle(.roundedBorder)
+                    }
+                    if model.overlay.template == .custom && model.overlay.svgRegions?[OverlayComponent.headlines.rawValue] == nil {
+                        Text("Mark the headline area once in the overlay editor to replace its original text.").foregroundStyle(muted).lineSpacing(3)
+                    } else {
+                        ForEach(model.project.sections) { section in
+                            TextField("Headline", text: Binding(get: { model.project.sections.first(where: { $0.id == section.id })?.title ?? "" }, set: { title in if let index = model.project.sections.firstIndex(where: { $0.id == section.id }) { model.project.sections[index].title = title } })).textFieldStyle(.roundedBorder)
+                        }
+                    }
+                    Button { model.editOverlays("Content") } label: { Label("Edit text & layout", systemImage: "text.cursor").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(StudioButton())
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("SPONSORS").font(.system(size: 10, weight: .semibold)).foregroundStyle(muted)
+                    if model.overlay.template == .custom && model.overlay.svgRegions?[OverlayComponent.sponsors.rawValue] == nil {
+                        Text("Mark the sponsor strip to use your editable carousel.").foregroundStyle(muted).lineSpacing(3)
+                    } else {
+                        ForEach(model.sponsors.filter { $0.enabled }) { sponsor in
+                            HStack(spacing: 8) {
+                                if let logo = SponsorCatalog.logo(sponsor) { Image(nsImage: NSImage(cgImage: logo, size: NSSize(width: logo.width, height: logo.height))).resizable().scaledToFit().frame(width: 28, height: 24) }
+                                TextField("Sponsor name", text: Binding(get: { model.sponsors.first(where: { $0.id == sponsor.id })?.name ?? "" }, set: { model.renameSponsor(sponsor.id, name: $0) })).textFieldStyle(.roundedBorder)
+                            }
+                        }
+                    }
+                    Button { model.editOverlays("Sponsors") } label: { Label("Manage logos & carousel", systemImage: "arrow.triangle.2.circlepath").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(StudioButton())
+                }
+                Divider()
+                Button { model.editOverlays("Branding") } label: { Label("Brand & logo", systemImage: "photo").frame(maxWidth: .infinity, alignment: .leading) }.buttonStyle(StudioButton())
+                Text("Saved automatically. Sponsor names and logos are shared across designs.").font(.system(size: 10)).foregroundStyle(muted).lineSpacing(3)
+            }.font(.system(size: 11)).padding(.trailing, 5)
+        }
     }
     var center: some View {
         VStack(alignment: .leading, spacing: 16) {

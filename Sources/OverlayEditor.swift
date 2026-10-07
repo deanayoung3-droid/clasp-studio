@@ -10,8 +10,15 @@ struct OverlayEditor: View {
     @State private var thumbnails: [UUID: NSImage] = [:]
     @State private var canvasPreview: NSImage?
     @State private var refreshTask: Task<Void, Never>?
+    @State private var dragStart: CGPoint?
+    @State private var dragEnd: CGPoint?
     private let previewContext = CIContext()
-    init(model: StudioModel, initialTab: String) { self.model = model; _tab = State(initialValue: initialTab == "Library" ? "Components" : initialTab) }
+    init(model: StudioModel, initialTab: String) {
+        self.model = model
+        _tab = State(initialValue: initialTab == "Sponsors" ? "Sponsors" : "Components")
+        _selected = State(initialValue: initialTab == "Sponsors" ? .sponsors : initialTab == "Branding" ? .programBrand : .headlines)
+        _browser = State(initialValue: initialTab == "Library" ? "Designs" : "Layers")
+    }
     private func value<T>(_ key: WritableKeyPath<OverlayDocument, T>) -> Binding<T> { Binding(get: { model.overlay[keyPath: key] }, set: { new in model.editOverlay { $0[keyPath: key] = new } }) }
     var body: some View {
         VStack(spacing: 0) {
@@ -21,7 +28,7 @@ struct OverlayEditor: View {
                 Spacer()
                 Button { model.importSVGOverlay() } label: { Label(model.importingSVG ? "Rendering…" : "Import SVG", systemImage: "plus") }.disabled(model.importingSVG || model.busy).controlSize(.small)
                 Text("Changes save automatically").font(.system(size: 10)).foregroundStyle(.secondary)
-                Menu { Button("Episode details") { tab = "Content" }; Button("Branding") { tab = "Branding" }; Button("Sponsors") { tab = "Sponsors" }; Divider(); Button("Duplicate design") { model.duplicateOverlay() } } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 24)
+                Menu { Button("Duplicate design") { model.duplicateOverlay() } } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 24)
                 Button("Done") { model.overlayEditorOpen = false }.keyboardShortcut(.defaultAction).font(.system(size: 12, weight: .medium)).padding(.horizontal, 14).padding(.vertical, 7).background(.white).foregroundStyle(.black).clipShape(RoundedRectangle(cornerRadius: 6)).buttonStyle(.plain)
             }.padding(.horizontal, 16).frame(height: 52).background(Color(white: 0.06))
             Divider().overlay(Color.white.opacity(0.08))
@@ -34,10 +41,14 @@ struct OverlayEditor: View {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 3) {
                                 HStack { Image(systemName: "chevron.down").font(.system(size: 9)); Image(systemName: "rectangle.on.rectangle"); Text("Broadcast").fontWeight(.medium) }.padding(10)
-                                ForEach(model.overlay.template == .custom ? [OverlayComponent.camera, .programBrand] : OverlayComponent.allCases) { component in
+                                ForEach(model.overlay.template == .custom ? [.camera] + OverlayComponent.svgEditable : OverlayComponent.allCases) { component in
                                     Button { selected = component; tab = component == .sponsors ? "Sponsors" : "Components" } label: {
-                                        HStack(spacing: 9) { Image(systemName: component.symbol).frame(width: 16).foregroundStyle(selected == component ? Color(red: 0.04, green: 0.61, blue: 0.96) : .secondary); Text(model.overlay.template == .custom && component == .programBrand ? "SVG artwork" : component.name).lineLimit(1); Spacer(minLength: 0); if !component.isVisible(in: model.overlay) { Image(systemName: "eye.slash").font(.system(size: 9)).foregroundStyle(.secondary) } }.padding(.leading, 21).padding(.trailing, 10).frame(height: 35).background(selected == component ? Color.white.opacity(0.07) : .clear).clipShape(RoundedRectangle(cornerRadius: 4))
+                                        HStack(spacing: 9) { Image(systemName: component.symbol).frame(width: 16).foregroundStyle(selected == component ? Color(red: 0.04, green: 0.61, blue: 0.96) : .secondary); Text(component.name).lineLimit(1); Spacer(minLength: 0); if !component.isVisible(in: model.overlay) { Image(systemName: "eye.slash").font(.system(size: 9)).foregroundStyle(.secondary) } }.padding(.leading, 21).padding(.trailing, 10).frame(height: 35).background(selected == component ? Color.white.opacity(0.07) : .clear).clipShape(RoundedRectangle(cornerRadius: 4))
                                     }.buttonStyle(.plain)
+                                }
+                                if model.overlay.template == .custom {
+                                    Divider().padding(.vertical, 8)
+                                    Button { tab = "Artwork" } label: { Label("SVG artwork & framing", systemImage: "doc.richtext").padding(10).frame(maxWidth: .infinity, alignment: .leading).background(tab == "Artwork" ? Color.white.opacity(0.07) : .clear) }.buttonStyle(.plain)
                                 }
                             }.font(.system(size: 11)).padding(7)
                         }
@@ -53,8 +64,12 @@ struct OverlayEditor: View {
                     Spacer(minLength: 15)
                     HStack(spacing: 4) {
                         componentTool("Select", "cursorarrow", .camera)
-                        if model.overlay.template == .custom { componentTool("SVG artwork", "photo", .programBrand) }
-                        else {
+                        if model.overlay.template == .custom {
+                            componentTool("Headlines", "list.bullet.rectangle", .headlines)
+                            componentTool("Sponsors", "arrow.left.arrow.right", .sponsors)
+                            componentTool("Title", "textformat", .title)
+                            componentTool("Brand", "photo", .programBrand)
+                        } else {
                         componentTool("Title", "textformat", .title)
                         componentTool("LIVE", "dot.radiowaves.left.and.right", .live)
                         componentTool("Logo", "photo", .programBrand)
@@ -62,21 +77,21 @@ struct OverlayEditor: View {
                         componentTool("Sponsors", "arrow.left.arrow.right", .sponsors)
                         }
                     }.padding(6).background(Color(white: 0.15)).clipShape(RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(.white.opacity(0.08)))
-                    Text("Click text or graphics to edit · Sample camera picture").font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 14).padding(.bottom, 20)
+                    Text(model.overlay.template == .custom && OverlayComponent.svgEditable.contains(selected) ? "Drag on the preview to set the editable area · Sample camera picture" : "Select a layer to edit · Sample camera picture").font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 14).padding(.bottom, 20)
                 }.frame(maxWidth: .infinity).background(Color(white: 0.105))
                 Divider().overlay(Color.white.opacity(0.08))
                 VStack(spacing: 0) {
-                    HStack { Text(model.overlay.template == .custom ? "Imported SVG" : tab == "Components" ? selected.name : tab).font(.system(size: 12, weight: .medium)); Spacer() }.padding(16).frame(height: 46)
+                    HStack { Text(tab == "Artwork" ? "SVG artwork" : tab == "Components" ? selected.name : tab).font(.system(size: 12, weight: .medium)); Spacer() }.padding(16).frame(height: 46)
                     Divider().overlay(Color.white.opacity(0.08))
-                    if model.overlay.template == .custom { ImportedSVGInspector(model: model) }
+                    if model.overlay.template == .custom && (tab == "Artwork" || selected == .camera) { ImportedSVGInspector(model: model) }
                     else if tab == "Components" { OverlayComponentEditor(model: model, preview: canvasPreview, selected: $selected, inspectorOnly: true) }
-                    else { ScrollView { Group { if tab == "Content" { content } else if tab == "Branding" { branding } else { sponsors } }.padding(16).frame(maxWidth: .infinity, alignment: .leading) } }
-                }.frame(width: 265).background(Color(white: 0.06))
+                    else { ScrollView { Group { if tab == "Sponsors" { if model.overlay.template == .custom { SVGRegionControls(model: model, component: .sponsors); Divider() }; sponsors.disabled(model.overlay.template == .custom && model.overlay.svgRegions?[OverlayComponent.sponsors.rawValue] == nil) } else if tab == "Content" { content } else { branding } }.padding(16).frame(maxWidth: .infinity, alignment: .leading) } }
+                }.frame(width: 310).background(Color(white: 0.06))
             }.frame(maxHeight: .infinity)
         }.frame(width: 1180, height: 780).background(Color(white: 0.075)).foregroundStyle(.white).preferredColorScheme(.dark)
         .onAppear { refreshThumbnails() }
         .onDisappear { refreshTask?.cancel() }
-        .onChange(of: model.project.selectedOverlayID) { if model.overlay.template == .custom { selected = .camera; tab = "Components" }; scheduleRefresh() }
+        .onChange(of: model.project.selectedOverlayID) { selected = .headlines; tab = "Components"; scheduleRefresh() }
         .onChange(of: model.project.overlayLibrary) { scheduleRefresh() }
         .onChange(of: model.project.sections) { scheduleRefresh() }
         .onChange(of: model.project.sponsorItems) { scheduleRefresh() }
@@ -93,14 +108,31 @@ struct OverlayEditor: View {
             ZStack(alignment: .topLeading) {
                 if let preview = canvasPreview { Image(nsImage: preview).resizable().scaledToFit() }
                 else { Color(white: 0.14) }
-                ForEach((model.overlay.template == .custom ? [OverlayComponent.camera] : OverlayComponent.allCases).filter { !(model.overlay.template == .law && $0 == .date) }) { component in
+                ForEach((model.overlay.template == .custom ? [.camera] + OverlayComponent.svgEditable.filter { model.overlay.svgRegions?[$0.rawValue] != nil } : OverlayComponent.allCases).filter { !(model.overlay.template == .law && $0 == .date) }) { component in
                     let region = model.overlay.zone(component).intersection(output)
                 let rect = region.isNull ? CGRect.zero : region
                     Rectangle().fill(Color.white.opacity(0.001)).frame(width: rect.width * scale, height: rect.height * scale).position(x: (rect.midX - output.minX) * scale, y: (output.maxY - rect.midY) * scale).onTapGesture { selected = component; tab = component == .sponsors ? "Sponsors" : "Components" }.accessibilityLabel("Edit \(component.name)")
                 }
-                let region = model.overlay.zone(selected).intersection(output)
+                let region = (model.overlay.template == .custom && selected != .camera && model.overlay.svgRegions?[selected.rawValue] == nil ? CGRect.zero : model.overlay.zone(selected)).intersection(output)
                 let rect = region.isNull ? CGRect.zero : region
                 Rectangle().stroke(Color(red: 0.04, green: 0.61, blue: 0.96), lineWidth: 1.5).frame(width: rect.width * scale, height: rect.height * scale).position(x: (rect.midX - output.minX) * scale, y: (output.maxY - rect.midY) * scale).allowsHitTesting(false)
+                if model.overlay.template == .custom && OverlayComponent.svgEditable.contains(selected) && tab != "Artwork" {
+                    Rectangle().fill(Color.white.opacity(0.001)).contentShape(Rectangle())
+                        .gesture(DragGesture(minimumDistance: 3).onChanged { value in
+                            guard !model.importingSVG && !model.busy else { return }
+                            dragStart = value.startLocation; dragEnd = value.location
+                        }.onEnded { value in
+                            defer { dragStart = nil; dragEnd = nil }
+                            guard !model.importingSVG && !model.busy else { return }
+                            let x = max(0, min(value.startLocation.x, value.location.x)), y = max(0, min(value.startLocation.y, value.location.y))
+                            let width = min(geometry.size.width - x, abs(value.location.x - value.startLocation.x)), height = min(geometry.size.height - y, abs(value.location.y - value.startLocation.y))
+                            guard width > 12, height > 8 else { return }
+                            model.setSVGRegion(selected, SVGCameraWindow(x: Double((output.minX + x / scale) / 1280), y: Double((720 - output.maxY + y / scale) / 720), width: Double(width / scale / 1280), height: max(0.005, Double(height / scale / 720))))
+                        }).accessibilityLabel("Draw the editable \(selected.name) area")
+                    if let start = dragStart, let end = dragEnd {
+                        Rectangle().fill(Color.blue.opacity(0.12)).overlay(Rectangle().stroke(.blue, lineWidth: 1.5)).frame(width: abs(end.x - start.x), height: abs(end.y - start.y)).position(x: (start.x + end.x) / 2, y: (start.y + end.y) / 2).allowsHitTesting(false)
+                    }
+                }
             }.clipped()
         }.aspectRatio(model.outputAspectRatio, contentMode: .fit).background(.black).overlay(Rectangle().stroke(.white.opacity(0.08)))
     }
@@ -189,7 +221,8 @@ struct OverlayEditor: View {
     }
     private var sponsors: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack { Toggle("Show sponsors", isOn: value(\.showSponsors)).toggleStyle(.checkbox); Spacer(); Toggle("Scroll continuously", isOn: Binding(get: { model.project.carouselMoving != false }, set: { model.project.carouselMoving = $0 })).toggleStyle(.checkbox) }
+            Toggle("Show sponsors", isOn: value(\.showSponsors)).toggleStyle(.checkbox)
+            Toggle("Scroll continuously", isOn: Binding(get: { model.project.carouselMoving != false }, set: { model.project.carouselMoving = $0 })).toggleStyle(.checkbox)
             HStack { Text("Scroll speed"); Slider(value: Binding(get: { model.project.carouselSpeed ?? 32 }, set: { model.project.carouselSpeed = $0 }), in: 10...100, step: 1); Text("\(Int(model.project.carouselSpeed ?? 32)) px/s").monospacedDigit().frame(width: 65) }
             Text("Names and logos update in the preview and recording. Use the arrows to change their order.").font(.system(size: 11)).foregroundStyle(.secondary)
             ForEach(Array(model.sponsors.enumerated()), id: \.element.id) { index, sponsor in

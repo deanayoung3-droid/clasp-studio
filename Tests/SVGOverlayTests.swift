@@ -20,6 +20,38 @@ extension StudioTests {
         <linearGradient id="fade" x1="0" y1="540" x2="0" y2="720" gradientUnits="userSpaceOnUse"><stop stop-color="#292929" stop-opacity="0"/><stop offset="1" stop-color="#282828"/></linearGradient></defs></svg>
         """
         let asset = try await SVGOverlayImport.render(Data(svg.utf8))
+        let editableSource = Data("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 720'><defs><linearGradient id='g'><stop stop-color='black' stop-opacity='0'/><stop offset='1' stop-color='black'/></linearGradient></defs><rect y='540' width='1280' height='180' fill='url(#g)'/><path d='M410 560h60v20h-60z' fill='red'/><path d='M100 560h40v20h-40z' fill='green'/></svg>".utf8)
+        let editableRegion = SVGCameraWindow(x: 0.3, y: 0.75, width: 0.6, height: 0.12)
+        let unmodified = try await SVGOverlayImport.render(editableSource)
+        let editable = try await SVGOverlayImport.render(editableSource, editableRegions: [editableRegion])
+        let cleanPixels = NSBitmapImageRep(data: editable.png)!, originalPixels = NSBitmapImageRep(data: unmodified.png)!
+        check(originalPixels.colorAt(x: 430, y: 570)!.redComponent > 0.8 && cleanPixels.colorAt(x: 430, y: 570)!.redComponent < 0.1, "Editable SVG regions remove baked-in vector lettering from the cached artwork")
+        check(cleanPixels.colorAt(x: 110, y: 570)!.greenComponent > 0.3 && abs(cleanPixels.colorAt(x: 700, y: 610)!.alphaComponent - originalPixels.colorAt(x: 700, y: 610)!.alphaComponent) < 0.02, "Editing an SVG region preserves unrelated logos and original gradient panels")
+        check(editable.source == unmodified.source, "Editable SVG imports retain the untouched source for restoring original content")
+        var mapped = BroadcastGraphics.document(StudioProject())
+        mapped.template = .custom; mapped.importedSVG = editable; mapped.svgRegions = [OverlayComponent.headlines.rawValue: editableRegion, OverlayComponent.sponsors.rawValue: SVGCameraWindow(x: 0.1, y: 0.93, width: 0.8, height: 0.06)]
+        mapped.showHeadlines = true; mapped.showSponsors = true
+        var mappedProject = StudioProject(); mappedProject.graphics = true; mappedProject.overlayLibrary = [mapped]; mappedProject.selectedOverlayID = mapped.id
+        let mappedSettings = BroadcastGraphics.renderSettings(mappedProject, activeIndex: 0)
+        check(mappedSettings.animation?.headlineTicker?.zone == editableRegion.contentRect && mappedSettings.animation?.sponsors?.destination == mapped.svgRegions![OverlayComponent.sponsors.rawValue]!.contentRect, "Imported SVG headlines and sponsor carousel use editable regions in the shared recording compositor")
+        let persisted = try JSONDecoder().decode(OverlayDocument.self, from: JSONEncoder().encode(mapped))
+        check(persisted.svgRegions == mapped.svgRegions, "SVG editable regions survive saving and reopening drafts")
+        let rollbackSafe = await MainActor.run {
+            let model = StudioModel(persist: false)
+            var other = mapped; other.id = UUID(); other.name = "Other overlay"
+            model.project.overlayLibrary = [mapped, other]; model.project.selectedOverlayID = mapped.id
+            model.editOverlay { $0.title = "Failed edit" }
+            model.selectOverlay(other.id); model.restoreSVGOverlay(mapped)
+            return model.overlay == other && model.project.overlayLibrary?.first == mapped
+        }
+        check(rollbackSafe, "A failed SVG edit restores its own overlay after selection changes, without replacing another design")
+        var renamed = mappedProject; renamed.sections[0].title = "A newly edited headline"; renamed.sponsorItems = [SponsorItem(name: "New sponsor")]
+        let changed = BroadcastGraphics.renderSettings(renamed, activeIndex: 0)
+        let editContext = CIContext()
+        let oldText = mappedSettings.animation!.headlineTicker!.current, newText = changed.animation!.headlineTicker!.current
+        let oldPNG = NSBitmapImageRep(cgImage: editContext.createCGImage(oldText, from: oldText.extent)!).representation(using: .png, properties: [:])!
+        let newPNG = NSBitmapImageRep(cgImage: editContext.createCGImage(newText, from: newText.extent)!).representation(using: .png, properties: [:])!
+        check(oldPNG != newPNG && changed.animation?.sponsors?.count == 1, "Imported overlays use current script headlines and edited sponsor names")
         let bitmap = NSBitmapImageRep(data: asset.png)!
         check(asset.removedPhotos == 1 && asset.camera.rect == CGRect(x: 0, y: 0, width: 1280, height: 720), "SVG photo patterns become a correctly positioned live camera opening")
         let clear = bitmap.colorAt(x: 640, y: 360)!.alphaComponent, middle = bitmap.colorAt(x: 640, y: 630)!.alphaComponent, bottom = bitmap.colorAt(x: 640, y: 715)!.alphaComponent
