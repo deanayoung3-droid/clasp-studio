@@ -27,7 +27,9 @@ func verify(_ app: URL) throws {
     for _ in 0..<3 {
         // Allow Finder's icon update after a move to finish before clearing it.
         Thread.sleep(forTimeInterval: 0.15)
-        let entries = [app] + (fm.enumerator(at: app, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? [])
+        // Inspecting bundle contents can make File Provider refresh the root icon.
+        // Strip root metadata last, immediately before signature verification.
+        let entries = (fm.enumerator(at: app, includingPropertiesForKeys: nil)?.allObjects as? [URL] ?? []) + [app]
         for entry in entries {
             for attribute in ["com.apple.FinderInfo", "com.apple.ResourceFork"] {
                 _ = entry.path.withCString { path in attribute.withCString { name in removexattr(path, name, XATTR_NOFOLLOW) } }
